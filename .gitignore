@@ -1,0 +1,27 @@
+# Środowisko wirtualne Python
+venv/
+ENV/
+env/
+.venv/
+
+# Pliki tymczasowe Pythona i pamięć podręczna
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Baza danych SQLite i lokalne stagingi danych (pobierane dynamicznie)
+*.db
+*.sqlite3
+scraped_listings.json
+parsed_listings.json
+
+# Pliki środowiskowe i klucze (dobre praktyki na przyszłość)
+.env
+*.local
+
+# Pliki systemowe i edytora
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
