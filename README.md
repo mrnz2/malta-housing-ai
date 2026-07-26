@@ -1,12 +1,12 @@
-# Malta Housing AI 🇲🇹🏠
+# Malta Housing AI
 
 An automated pipeline for scraping, processing, analyzing, and storing real estate listings in Malta. It uses a modular Python package combined with a local Large Language Model (**Qwen 2.5 7B** via **Ollama**) for unstructured data extraction, storing structured results in a SQLite database.
 
+> **For AI assistants / new chats:** start with [`AGENTS.md`](AGENTS.md) (also loaded via `.cursor/rules/`).
+
 ---
 
-## 🤖 System Context & Architecture Reference (For AI Assistants)
-
-> **Note for LLMs:** Read this section to understand the project architecture, file conventions, data schema, and system workflows before assisting with code modifications or features.
+## System Context & Architecture Reference
 
 ### 1. Core Workflow Architecture
 
@@ -16,8 +16,9 @@ An automated pipeline for scraping, processing, analyzing, and storing real esta
         ▼
 ┌─────────────────────────┐
 │  scrapers/              │ -> maltapark.py
-│  (Requests + BS4)       │ -> ownersbest.py
+│  (HTTP + BS4)           │ -> ownersbest.py
 │                         │ -> djar.py
+│                         │ -> propertymarket.py
 └────────────┬────────────┘
              │ Merges raw payloads (by URL)
              ▼
@@ -41,7 +42,9 @@ An automated pipeline for scraping, processing, analyzing, and storing real esta
    data/malta_properties.db
 ```
 
-Orchestration: `python -m malta_housing` (`run` / `scrape` / `parse` / `db` / `init-db` / `serve`).
+Orchestration: `python -m malta_housing` (`run` / `scrape` / `parse` / `db` / `init-db` / `serve` / `purge-gozo`).
+
+Windows one-shot for **all** portals: `.\run_all.ps1` (scrape each source → parse → db).
 
 ### 2. Package layout
 
@@ -56,7 +59,8 @@ malta-housing-ai/
 │   ├── scrapers/
 │   │   ├── maltapark.py
 │   │   ├── ownersbest.py
-│   │   └── djar.py
+│   │   ├── djar.py
+│   │   └── propertymarket.py
 │   ├── parsing/
 │   │   └── llm.py
 │   ├── db/
@@ -66,21 +70,26 @@ malta-housing-ai/
 │       ├── server.py        # local HTTP server (stdlib)
 │       └── static/          # HTML / CSS / JS UI
 ├── data/                    # runtime artefacts (gitignored contents)
+├── AGENTS.md                # onboarding for AI coding agents
+├── run_all.ps1              # Windows: all scrapers → parse → db
 ├── run_pipeline.py          # thin wrapper → malta_housing.cli
+├── scraper_propertymarket.py  # thin launcher for Property Market
 ├── requirements.txt
 ├── setup.ps1
 └── README.md
 ```
 
 * `malta_housing/models.py`: Shared Pydantic contracts (`ScrapedListing`, `MaltaPropertySchema`, `ParsedListing`).
-* `malta_housing/common.py`: Shared HTTP client (session + retry on 429/5xx), staging merge I/O, HTML text helpers.
+* `malta_housing/common.py`: Shared HTTP client (session + retry on 429/5xx; optional `curl_cffi` TLS impersonation; SiteGround PoW auto-solve), staging merge I/O, HTML text helpers.
 * `malta_housing/scrapers/maltapark.py`: Scrapes **MaltaPark** (`source=maltapark`).
 * `malta_housing/scrapers/ownersbest.py`: Scrapes **Owners Best** (`source=ownersbest`).
 * `malta_housing/scrapers/djar.py`: Scrapes **Djar.ai** (`source=djar`).
+* `malta_housing/scrapers/propertymarket.py`: Scrapes **Property Market Malta** (`source=propertymarket`).
 * `malta_housing/parsing/llm.py`: Ollama extraction with checkpoints; skips URLs already in DB (unless `--force`).
 * `malta_housing/db/store.py`: UPSERTs into `data/malta_properties.db`; logs price changes in `price_history`.
 * `malta_housing/web/`: Local browser UI — filter/search listings, open detail + price history.
 * `setup.ps1`: Windows PowerShell install (venv + pinned deps + `init-db` only).
+* `run_all.ps1`: Windows PowerShell — all scrapers in sequence, then parse, then db.
 
 ### 3. Data Schema Standards
 
@@ -114,7 +123,7 @@ malta-housing-ai/
 | `is_shell_form` | `bool` | |
 | `seller_type` | `OWNER \| AGENT \| SENSAR \| UNKNOWN \| null` | |
 | `key_features` | `list[str]` | Max ~4 features |
-| `source` | `maltapark \| ownersbest \| djar \| null` | Portal origin |
+| `source` | `maltapark \| ownersbest \| djar \| propertymarket \| null` | Portal origin |
 | `scraped_at` | `str \| null` | ISO timestamp from scrape |
 | `updated_at` | `str \| null` | ISO timestamp of last parse/DB write |
 | `distance_to_gzira_km` | `float \| null` | Estimated km to Gżira from `to_gzira.csv` |
@@ -123,7 +132,7 @@ malta-housing-ai/
 
 ---
 
-## 🚀 Quick Start & Installation
+## Quick Start & Installation
 
 ### Prerequisites
 
@@ -157,12 +166,20 @@ python -m malta_housing init-db
 
 Ensure Ollama is running before `parse`.
 
-**Full run (recommended):**
+**All portals (Windows, recommended):**
+
+```powershell
+.\run_all.ps1 -Pages 3
+# optional: .\run_all.ps1 -Pages 3 -Force   # re-parse known URLs
+```
+
+**Single portal (full scrape → parse → db):**
 
 ```bash
 python -m malta_housing run --source maltapark --pages 3
 python -m malta_housing run --source ownersbest --pages 3
 python -m malta_housing run --source djar --pages 3
+python -m malta_housing run --source propertymarket --pages 3
 ```
 
 **Step by step:**
@@ -193,8 +210,10 @@ Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Optional: `--host 0.0.0.0 -
 
 No extra dependencies — stdlib HTTP server + static HTML/JS reading `data/malta_properties.db`.
 
+If `python -m malta_housing db` fails with `database is locked`, stop `serve` (or any other process using the DB) and retry.
+
 ---
 
-## 📝 License
+## License
 
 Internal / Personal Project — Designed for Malta Real Estate Market Analysis.

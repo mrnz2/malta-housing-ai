@@ -8,7 +8,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 SellerType = Literal["OWNER", "AGENT", "SENSAR", "UNKNOWN"]
-SourceType = Literal["maltapark", "ownersbest", "djar"]
+SourceType = Literal["maltapark", "ownersbest", "djar", "propertymarket"]
 
 
 def utc_now_iso() -> str:

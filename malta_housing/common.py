@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import quote, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -60,9 +64,57 @@ DEFAULT_HEADERS = {
 
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
+_SG_REDIRECT_RE = re.compile(r'content="0;([^"]+)"', re.I)
+_SG_CHALLENGE_RE = re.compile(r'const\s+sgchallenge="([^"]+)"')
+_SG_SUBMIT_RE = re.compile(r'const\s+sgsubmit_url="([^"]+)"')
+
+
+def _solve_sg_pow(challenge_str: str, max_attempts: int = 20_000_000) -> tuple[str, int, int]:
+    """Solve SiteGround SHA1 proof-of-work; returns (base64 solution, ms, nonce)."""
+    complexity = int(challenge_str.split(":", 1)[0])
+    started = time.time()
+    challenge_bytes = challenge_str.encode("utf-8")
+    for nonce in range(max_attempts):
+        candidate = challenge_bytes + str(nonce).encode("utf-8")
+        digest = hashlib.sha1(candidate).digest()
+        first_word = int.from_bytes(digest[:4], "big")
+        if (first_word >> (32 - complexity)) == 0:
+            elapsed_ms = int((time.time() - started) * 1000)
+            return base64.b64encode(candidate).decode("ascii"), elapsed_ms, nonce
+    raise RuntimeError(f"SiteGround PoW not solved within {max_attempts} attempts")
+
+
+def _is_sg_challenge(response) -> bool:
+    if getattr(response, "status_code", None) != 202:
+        return False
+    headers = {str(k).lower(): v for k, v in response.headers.items()}
+    if headers.get("sg-captcha") == "challenge":
+        return True
+    text = getattr(response, "text", "") or ""
+    return "sgcaptcha" in text.lower()
+
+
+def _session_has_cookie(session, name: str) -> bool:
+    try:
+        if session.cookies.get(name):
+            return True
+    except Exception:
+        pass
+    try:
+        return any(getattr(c, "name", None) == name for c in session.cookies)
+    except Exception:
+        return name in str(session.cookies)
+
 
 class HttpClient:
-    """Session-backed HTTP GET with retries on 429/5xx."""
+    """Session-backed HTTP GET with retries on 429/5xx.
+
+    Optional ``impersonate`` (e.g. ``\"chrome124\"``) uses curl_cffi to mimic a
+    real browser TLS fingerprint — needed for portals that 403 plain requests.
+
+    SiteGround Anti-Bot (HTTP 202 + sg-captcha) is solved automatically via
+    JavaScript proof-of-work and the resulting ``_I_`` cookie is kept on the session.
+    """
 
     def __init__(
         self,
@@ -70,12 +122,21 @@ class HttpClient:
         timeout: float = 12.0,
         max_retries: int = 3,
         backoff_base: float = 1.5,
+        impersonate: str | None = None,
     ):
-        self.session = requests.Session()
-        self.session.headers.update(headers or DEFAULT_HEADERS)
         self.timeout = timeout
         self.max_retries = max_retries
         self.backoff_base = backoff_base
+        self.impersonate = impersonate
+        self._sg_solving = False
+
+        if impersonate:
+            from curl_cffi import requests as cf_requests
+
+            self.session = cf_requests.Session(impersonate=impersonate)
+        else:
+            self.session = requests.Session()
+        self.session.headers.update(headers or DEFAULT_HEADERS)
 
     def get(self, url: str) -> requests.Response:
         last_error: Exception | None = None
@@ -89,16 +150,84 @@ class HttpClient:
                         wait = max(wait, float(retry_after))
                     time.sleep(wait)
                     continue
+                if _is_sg_challenge(response):
+                    if self._sg_solving:
+                        raise requests.HTTPError(
+                            f"202 Accepted (bot challenge, already solving) for {url}",
+                            response=response,
+                        )
+                    print("🧩 SiteGround bot challenge — solving PoW…")
+                    self._solve_siteground_challenge(url, response)
+                    response = self.session.get(url, timeout=self.timeout)
+                    if _is_sg_challenge(response):
+                        raise requests.HTTPError(
+                            f"202 Accepted (bot challenge persists) for {url}",
+                            response=response,
+                        )
+                    print("   └─ Challenge solved; continuing.")
                 response.raise_for_status()
                 return response
-            except requests.RequestException as exc:
+            except Exception as exc:
                 last_error = exc
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status is not None and status not in RETRYABLE_STATUS and status < 500:
+                    break
                 if attempt >= self.max_retries:
                     break
                 time.sleep(self.backoff_base * attempt)
         raise requests.RequestException(
             f"Failed GET {url} after {self.max_retries} attempts: {last_error}"
         )
+
+    def _solve_siteground_challenge(self, original_url: str, challenge_response) -> None:
+        """Fetch PoW challenge, solve it, and store the ``_I_`` cookie on the session."""
+        self._sg_solving = True
+        try:
+            text = challenge_response.text or ""
+            match = _SG_REDIRECT_RE.search(text)
+            if not match:
+                raise RuntimeError("SiteGround 202 response missing challenge redirect")
+
+            parsed = urlparse(original_url)
+            base = f"{parsed.scheme}://{parsed.netloc}"
+            challenge_path = match.group(1)
+            challenge_url = (
+                challenge_path
+                if challenge_path.startswith("http")
+                else base + challenge_path
+            )
+
+            page = self.session.get(
+                challenge_url,
+                timeout=max(self.timeout, 20.0),
+                headers={"Referer": original_url},
+            )
+            page_text = page.text or ""
+            challenge_match = _SG_CHALLENGE_RE.search(page_text)
+            submit_match = _SG_SUBMIT_RE.search(page_text)
+            if not challenge_match or not submit_match:
+                raise RuntimeError("SiteGround challenge page missing sgchallenge/sgsubmit_url")
+
+            challenge = challenge_match.group(1)
+            submit_path = submit_match.group(1)
+            solution, elapsed_ms, nonce = _solve_sg_pow(challenge)
+            print(f"   └─ PoW solved in {elapsed_ms}ms (nonce={nonce}).")
+
+            sep = "&" if "?" in submit_path else "?"
+            submit_url = (
+                f"{base}{submit_path}{sep}sol={quote(solution, safe='')}"
+                f"&s={elapsed_ms}:{nonce}"
+            )
+            self.session.get(
+                submit_url,
+                timeout=max(self.timeout, 20.0),
+                allow_redirects=True,
+                headers={"Referer": challenge_url},
+            )
+            if not _session_has_cookie(self.session, "_I_"):
+                raise RuntimeError("SiteGround submit did not set _I_ cookie")
+        finally:
+            self._sg_solving = False
 
 
 def strip_noise_tags(soup: BeautifulSoup) -> BeautifulSoup:
@@ -158,6 +287,6 @@ def append_jsonl(path: Path, record: dict[str, Any]) -> None:
 
 
 def ensure_source(value: str) -> SourceType:
-    if value not in {"maltapark", "ownersbest", "djar"}:
+    if value not in {"maltapark", "ownersbest", "djar", "propertymarket"}:
         raise ValueError(f"Unknown source: {value}")
     return value  # type: ignore[return-value]
