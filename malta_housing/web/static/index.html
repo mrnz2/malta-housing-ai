@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Malta Housing — Listings Browser</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="bg-mesh" aria-hidden="true"></div>
+
+  <header class="top">
+    <div class="brand-block">
+      <p class="brand">Malta Housing</p>
+      <p class="tagline">Local listings browser</p>
+    </div>
+    <div class="summary" id="summary">
+      <span class="summary-item"><strong id="stat-total">—</strong> listings</span>
+      <span class="summary-item">avg <strong id="stat-avg">—</strong></span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="filters" aria-label="Filters">
+      <form id="filter-form">
+        <label class="field">
+          <span>Search</span>
+          <input type="search" name="q" placeholder="Title, town, URL…" autocomplete="off" />
+        </label>
+
+        <label class="field">
+          <span>Locality</span>
+          <select name="locality" id="filter-locality">
+            <option value="">All</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Source</span>
+          <select name="source" id="filter-source">
+            <option value="">All</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Seller</span>
+          <select name="seller_type" id="filter-seller">
+            <option value="">All</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Type</span>
+          <select name="property_type" id="filter-type">
+            <option value="">All</option>
+          </select>
+        </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Min €</span>
+            <input type="number" name="min_price" min="0" step="1000" placeholder="0" />
+          </label>
+          <label class="field">
+            <span>Max €</span>
+            <input type="number" name="max_price" min="0" step="1000" placeholder="…" />
+          </label>
+        </div>
+
+        <div class="checks">
+          <label class="check"><input type="checkbox" name="freehold" value="1" /> Freehold</label>
+          <label class="check"><input type="checkbox" name="airspace" value="1" /> Airspace</label>
+        </div>
+
+        <label class="field">
+          <span>Sort</span>
+          <select name="sort">
+            <option value="updated_desc">Recently updated</option>
+            <option value="price_asc">Price ↑</option>
+            <option value="price_desc">Price ↓</option>
+            <option value="locality_asc">Locality A–Z</option>
+            <option value="title_asc">Title A–Z</option>
+            <option value="gzira_asc">Distance to Gżira ↑</option>
+            <option value="gzira_desc">Distance to Gżira ↓</option>
+          </select>
+        </label>
+
+        <div class="filter-actions">
+          <button type="submit" class="btn primary">Apply</button>
+          <button type="reset" class="btn ghost">Reset</button>
+        </div>
+      </form>
+    </aside>
+
+    <section class="results" aria-live="polite">
+      <div class="results-bar">
+        <h1 class="results-title">Listings</h1>
+        <p class="results-count" id="results-count">Loading…</p>
+      </div>
+      <div class="table-wrap">
+        <table class="listings-table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Locality</th>
+              <th>→ Gżira</th>
+              <th>Price</th>
+              <th>Beds</th>
+              <th>Seller</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody id="listings-body"></tbody>
+        </table>
+      </div>
+      <div class="pager" id="pager" hidden>
+        <button type="button" class="btn ghost" id="prev-page">Previous</button>
+        <span id="page-label"></span>
+        <button type="button" class="btn ghost" id="next-page">Next</button>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="detail-dialog" class="detail-dialog">
+    <div class="detail-inner">
+      <header class="detail-head">
+        <div>
+          <p class="detail-kicker" id="detail-kicker"></p>
+          <h2 id="detail-title"></h2>
+        </div>
+        <button type="button" class="btn ghost" id="detail-close" aria-label="Close">Close</button>
+      </header>
+      <p class="detail-price" id="detail-price"></p>
+      <dl class="detail-grid" id="detail-grid"></dl>
+      <div class="detail-features" id="detail-features"></div>
+      <section class="history-block">
+        <h3>Price history</h3>
+        <ol id="detail-history" class="history-list"></ol>
+      </section>
+      <p class="detail-link"><a id="detail-url" href="#" target="_blank" rel="noopener">Open original listing ↗</a></p>
+    </div>
+  </dialog>
+
+  <script src="/static/app.js" type="module"></script>
+</body>
+</html>

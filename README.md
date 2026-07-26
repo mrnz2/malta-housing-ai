@@ -1,6 +1,6 @@
 # Malta Housing AI 🇲🇹🏠
 
-An automated pipeline for scraping, processing, analyzing, and storing real estate listings in Malta. It uses a modular Python architecture combined with a local Large Language Model (**Qwen 2.5 7B** via **Ollama**) for unstructured data extraction, storing structured results in a SQLite database.
+An automated pipeline for scraping, processing, analyzing, and storing real estate listings in Malta. It uses a modular Python package combined with a local Large Language Model (**Qwen 2.5 7B** via **Ollama**) for unstructured data extraction, storing structured results in a SQLite database.
 
 ---
 
@@ -9,142 +9,192 @@ An automated pipeline for scraping, processing, analyzing, and storing real esta
 > **Note for LLMs:** Read this section to understand the project architecture, file conventions, data schema, and system workflows before assisting with code modifications or features.
 
 ### 1. Core Workflow Architecture
-[ Web Portals ]
-│
-▼
-┌─────────────────────────┐
-│  Scrapers               │ -> scraper.py (MaltaPark)
-│  (Requests + BS4)       │ -> scraper_ownersbest.py (Owners Best)
-└────────────┬────────────┘
-│ Saves raw payloads
-▼
-scraped_listings.json  (Intermediate Staging Schema)
-│
-▼
-┌─────────────────────────┐
-│  Parser                 │ -> Uses local Ollama (qwen2.5:7b) + Pydantic
-│  (parser.py)            │    Extracts: price, town, bedrooms, airspace, freehold, etc.
-└────────────┬────────────┘
-│ Saves structured records
-▼
-parsed_listings.json
-│
-▼
-┌─────────────────────────┐
-│  Database               │ -> database.py
-│  (SQLite)               │    Upserts into listings table (unique URL constraint)
-└─────────────────────────┘
 
-### 2. File & Directory Responsibilities
-* `scraper.py`: Scrapes real estate listings from **MaltaPark**. Output format: List of `{ "url", "title", "raw_text" }`.
-* `scraper_ownersbest.py`: Scrapes real estate listings from **Owners Best**. Handles pagination (`?pg=X`) and filter extraction (`/malta-property/` & `real-estate-detail-`).
-* `debug_ownersbest.py` & `debug_links.py`: Diagnostic utilities for inspecting network responses and raw link extraction patterns.
-* `parser.py`: Connects to `localhost:11434` (Ollama), sends `raw_text` to `qwen2.5:7b` using strict Pydantic schemas, and outputs clean structured JSON (`parsed_listings.json`).
-* `database.py`: Reads `parsed_listings.json` and inserts/updates records in `listings.db` (SQLite).
-* `setup.ps1`: Automated installation and setup script for Windows PowerShell environments.
-* `.gitignore`: Excludes `venv/`, SQLite databases (`*.db`), and intermediate JSON staging files (`scraped_listings.json`, `parsed_listings.json`).
+```
+[ Web Portals ]
+        │
+        ▼
+┌─────────────────────────┐
+│  scrapers/              │ -> maltapark.py
+│  (Requests + BS4)       │ -> ownersbest.py
+│                         │ -> djar.py
+└────────────┬────────────┘
+             │ Merges raw payloads (by URL)
+             ▼
+   data/scraped_listings.json
+             │
+             ▼
+┌─────────────────────────┐
+│  parsing/               │ -> Ollama (qwen2.5:7b) + Pydantic models
+│  (llm.py)               │    Retries, checkpoints, parse_failures.jsonl
+└────────────┬────────────┘
+             │ Saves structured records
+             ▼
+   data/parsed_listings.json
+             │
+             ▼
+┌─────────────────────────┐
+│  db/                    │ -> store.py
+│  (SQLite)               │    UPSERT listings + price_history on price change
+└─────────────────────────┘
+             ▼
+   data/malta_properties.db
+```
+
+Orchestration: `python -m malta_housing` (`run` / `scrape` / `parse` / `db` / `init-db` / `serve`).
+
+### 2. Package layout
+
+```
+malta-housing-ai/
+├── malta_housing/           # Python package
+│   ├── __main__.py          # python -m malta_housing
+│   ├── cli.py               # argparse orchestration
+│   ├── models.py            # ScrapedListing, ParsedListing, …
+│   ├── paths.py             # data/ paths relative to project root
+│   ├── common.py            # HTTP client, staging I/O, HTML helpers
+│   ├── scrapers/
+│   │   ├── maltapark.py
+│   │   ├── ownersbest.py
+│   │   └── djar.py
+│   ├── parsing/
+│   │   └── llm.py
+│   ├── db/
+│   │   ├── store.py         # UPSERT + price_history
+│   │   └── queries.py       # read API for the browser
+│   └── web/
+│       ├── server.py        # local HTTP server (stdlib)
+│       └── static/          # HTML / CSS / JS UI
+├── data/                    # runtime artefacts (gitignored contents)
+├── run_pipeline.py          # thin wrapper → malta_housing.cli
+├── requirements.txt
+├── setup.ps1
+└── README.md
+```
+
+* `malta_housing/models.py`: Shared Pydantic contracts (`ScrapedListing`, `MaltaPropertySchema`, `ParsedListing`).
+* `malta_housing/common.py`: Shared HTTP client (session + retry on 429/5xx), staging merge I/O, HTML text helpers.
+* `malta_housing/scrapers/maltapark.py`: Scrapes **MaltaPark** (`source=maltapark`).
+* `malta_housing/scrapers/ownersbest.py`: Scrapes **Owners Best** (`source=ownersbest`).
+* `malta_housing/scrapers/djar.py`: Scrapes **Djar.ai** (`source=djar`).
+* `malta_housing/parsing/llm.py`: Ollama extraction with checkpoints; skips URLs already in DB (unless `--force`).
+* `malta_housing/db/store.py`: UPSERTs into `data/malta_properties.db`; logs price changes in `price_history`.
+* `malta_housing/web/`: Local browser UI — filter/search listings, open detail + price history.
+* `setup.ps1`: Windows PowerShell install (venv + pinned deps + `init-db` only).
 
 ### 3. Data Schema Standards
 
-**Staging Intermediate Schema (`scraped_listings.json`):**
+**Staging Intermediate Schema (`data/scraped_listings.json`):**
+
 ```json
 [
   {
     "url": "https://...",
     "title": "Property Title",
-    "raw_text": "Full scraped body text..."
+    "raw_text": "Full scraped body text...",
+    "source": "maltapark",
+    "scraped_at": "2026-07-26T10:00:00+00:00"
   }
 ]
+```
 
-Pydantic Data Model (Listing):
+**Parsed / DB listing fields (`ParsedListing`):**
 
-url (str, Primary Key / Unique)
+| Field | Type | Notes |
+| --- | --- | --- |
+| `url` | `str` | Unique key |
+| `title` | `str` | |
+| `price_eur` | `int \| null` | EUR as integer |
+| `locality` | `str \| null` | Town/village in Malta |
+| `bedrooms` | `int \| null` | |
+| `property_type` | `str \| null` | Apartment, Penthouse, Maisonette, etc. |
+| `has_airspace` | `bool` | |
+| `is_freehold` | `bool` | |
+| `has_sea_view` | `bool` | |
+| `is_shell_form` | `bool` | |
+| `seller_type` | `OWNER \| AGENT \| SENSAR \| UNKNOWN \| null` | |
+| `key_features` | `list[str]` | Max ~4 features |
+| `source` | `maltapark \| ownersbest \| djar \| null` | Portal origin |
+| `scraped_at` | `str \| null` | ISO timestamp from scrape |
+| `updated_at` | `str \| null` | ISO timestamp of last parse/DB write |
+| `distance_to_gzira_km` | `float \| null` | Estimated km to Gżira from `to_gzira.csv` |
 
-title (str)
+**SQLite:** `data/malta_properties.db` — table `listings` (unique `url`) + `price_history` (`url`, `price_eur`, `recorded_at`) written on insert and whenever `price_eur` changes.
 
-price (float | null)
+---
 
-location (str | null - Town/Village in Malta)
+## 🚀 Quick Start & Installation
 
-bedrooms (int | null)
+### Prerequisites
 
-bathrooms (int | null)
+* Python 3.10+
+* Git
+* Ollama installed locally with the Qwen 2.5 7B model:
 
-property_type (str | null - Apartment, Penthouse, Maisonette, Townhouse, etc.)
-
-has_airspace (bool | null)
-
-is_freehold (bool | null)
-
-seller_type (str | null - Owner / Agent)
-
-🚀 Quick Start & Installation
-Prerequisites
-Python 3.10+
-
-Git
-
-Ollama installed locally with the Qwen 2.5 7B model:
-
+```bash
 ollama pull qwen2.5:7b
+```
 
+### Setup
 
-🛠️ Setup Instructions
-🪟 Windows (Automatic Setup)
-Run the automated PowerShell setup script:
+**Windows (automatic):**
 
-PowerShell
+```powershell
 .\setup.ps1
-Or manually:
+```
 
-PowerShell
+**Manual (Windows / macOS / Linux):**
+
+```bash
 python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install requests beautifulsoup4 pydantic
-🍏 macOS / Linux
-Open terminal in the project directory:
+# Windows: .\venv\Scripts\Activate.ps1
+# macOS/Linux: source venv/bin/activate
+pip install -r requirements.txt
+python -m malta_housing init-db
+```
 
-Bash
-python3 -m venv venv
-source venv/bin/activate
-pip install requests beautifulsoup4 pydantic
-💻 Running the Pipeline
-Ensure Ollama is running in the background before starting the parser.
+### Running the pipeline
 
-1. Activate Environment
-Windows: .\venv\Scripts\Activate.ps1
+Ensure Ollama is running before `parse`.
 
-macOS/Linux: source venv/bin/activate
+**Full run (recommended):**
 
-2. Run Scraper
-Choose a target platform:
+```bash
+python -m malta_housing run --source maltapark --pages 3
+python -m malta_housing run --source ownersbest --pages 3
+python -m malta_housing run --source djar --pages 3
+```
 
-MaltaPark:
+**Step by step:**
 
-Bash
-python scraper.py
-Owners Best:
+```bash
+python -m malta_housing scrape --source maltapark --pages 3
+python -m malta_housing parse          # add --force to re-parse known URLs
+python -m malta_housing db
+```
 
-Bash
-python scraper_ownersbest.py
-3. Parse Data with Local AI
-Extract structured attributes using Ollama:
+`python run_pipeline.py …` still works as a thin wrapper around the same CLI.
 
-Bash
-python parser.py
-4. Load into SQLite Database
-Save the extracted listings into local storage:
+Staging merges by URL across portals — running MaltaPark then Owners Best accumulates both in `data/scraped_listings.json`.
 
-Bash
-python database.py
-🛠️ Diagnostics & Troubleshooting
-If a scraper returns 0 listings due to layout changes or blocking, use the diagnostic scripts:
+Gozo listings are excluded (scrape / parse / db). To remove any already stored:
 
-Bash
-# Check HTTP status codes and initial page response
-python debug_ownersbest.py
+```bash
+python -m malta_housing purge-gozo
+```
 
-# Extract and inspect all raw links on the page
-python debug_links.py
-📝 License
+### Browse the database (local UI)
+
+```bash
+python -m malta_housing serve
+```
+
+Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Optional: `--host 0.0.0.0 --port 8765`.
+
+No extra dependencies — stdlib HTTP server + static HTML/JS reading `data/malta_properties.db`.
+
+---
+
+## 📝 License
+
 Internal / Personal Project — Designed for Malta Real Estate Market Analysis.

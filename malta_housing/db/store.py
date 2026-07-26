@@ -1,0 +1,300 @@
+"""SQLite persistence with UPSERT and price history tracking."""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+from typing import Any
+
+from malta_housing.common import PARSED_PATH, load_json_list
+from malta_housing.distances import distance_to_gzira_km
+from malta_housing.geo import is_gozo_record
+from malta_housing.models import utc_now_iso
+from malta_housing.paths import DB_PATH, ensure_data_dir
+
+
+def _connect(db_name: str | Path = DB_PATH) -> sqlite3.Connection:
+    ensure_data_dir()
+    conn = sqlite3.connect(str(db_name))
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _ensure_column(cursor: sqlite3.Cursor, table: str, column: str, col_def: str) -> None:
+    cursor.execute(f"PRAGMA table_info({table})")
+    existing = {row[1] for row in cursor.fetchall()}
+    if column not in existing:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")
+
+
+def init_db(db_name: str | Path = DB_PATH) -> None:
+    """Create tables and migrate missing columns. Does not require parsed JSON."""
+    conn = _connect(db_name)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS listings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT UNIQUE NOT NULL,
+            title TEXT,
+            price_eur INTEGER,
+            locality TEXT,
+            property_type TEXT,
+            bedrooms INTEGER,
+            seller_type TEXT,
+            is_freehold BOOLEAN,
+            has_airspace BOOLEAN,
+            has_sea_view BOOLEAN,
+            is_shell_form BOOLEAN,
+            key_features TEXT,
+            source TEXT,
+            scraped_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    for column, col_def in (
+        ("source", "TEXT"),
+        ("scraped_at", "TIMESTAMP"),
+        ("updated_at", "TIMESTAMP"),
+        ("distance_to_gzira_km", "REAL"),
+    ):
+        _ensure_column(cursor, "listings", column, col_def)
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS price_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT NOT NULL,
+            price_eur INTEGER,
+            recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (url) REFERENCES listings(url)
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_price_history_url ON price_history(url)"
+    )
+
+    conn.commit()
+    _backfill_gzira_distances(conn)
+    conn.close()
+
+
+def _backfill_gzira_distances(conn: sqlite3.Connection) -> int:
+    """Fill missing distance_to_gzira_km from locality + to_gzira.csv."""
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT id, locality FROM listings
+            WHERE distance_to_gzira_km IS NULL
+              AND locality IS NOT NULL
+              AND TRIM(locality) != ''
+            """
+        )
+    except sqlite3.OperationalError:
+        return 0
+
+    updated = 0
+    for row in cursor.fetchall():
+        km = distance_to_gzira_km(row["locality"])
+        if km is None:
+            continue
+        cursor.execute(
+            "UPDATE listings SET distance_to_gzira_km = ? WHERE id = ?",
+            (km, row["id"]),
+        )
+        updated += 1
+    if updated:
+        conn.commit()
+        print(f"📍 Uzupełniono distance_to_gzira_km dla {updated} ofert.")
+    return updated
+
+
+def get_known_urls(db_name: str | Path = DB_PATH) -> set[str]:
+    """Return URLs already present in the listings table."""
+    db_path = Path(db_name)
+    if not db_path.exists():
+        return set()
+    conn = _connect(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT url FROM listings")
+        urls = {row["url"] for row in cursor.fetchall()}
+    except sqlite3.OperationalError:
+        urls = set()
+    conn.close()
+    return urls
+
+
+def delete_gozo_listings(db_name: str | Path = DB_PATH) -> dict[str, int]:
+    """Remove Gozo properties (and their price history) from the database."""
+    if not Path(db_name).exists():
+        print(f"⚠️ Brak bazy {db_name} — nic do usunięcia.")
+        return {"deleted": 0}
+
+    init_db(db_name)
+    conn = _connect(db_name)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, url, title, locality FROM listings
+        """
+    )
+    to_delete: list[tuple[int, str]] = []
+    for row in cursor.fetchall():
+        if is_gozo_record(
+            {"title": row["title"], "locality": row["locality"], "url": row["url"]}
+        ):
+            to_delete.append((row["id"], row["url"]))
+
+    for _listing_id, url in to_delete:
+        cursor.execute("DELETE FROM price_history WHERE url = ?", (url,))
+        cursor.execute("DELETE FROM listings WHERE url = ?", (url,))
+
+    conn.commit()
+    conn.close()
+    print(f"🗑️ Usunięto {len(to_delete)} ofert z Gozo z '{db_name}'.")
+    return {"deleted": len(to_delete)}
+
+
+def save_listings_to_db(
+    listings: list[dict[str, Any]], db_name: str | Path = DB_PATH
+) -> dict[str, int]:
+    """Insert new listings or update existing ones; record price changes."""
+    init_db(db_name)
+    conn = _connect(db_name)
+    cursor = conn.cursor()
+
+    inserted = 0
+    updated = 0
+    price_changes = 0
+    skipped_gozo = 0
+    now = utc_now_iso()
+
+    for item in listings:
+        if is_gozo_record(item):
+            skipped_gozo += 1
+            continue
+
+        url = item["url"]
+        key_features = item.get("key_features", [])
+        if not isinstance(key_features, str):
+            key_features = json.dumps(key_features, ensure_ascii=False)
+
+        distance_km = item.get("distance_to_gzira_km")
+        if distance_km is None:
+            distance_km = distance_to_gzira_km(item.get("locality"))
+
+        cursor.execute("SELECT price_eur, title FROM listings WHERE url = ?", (url,))
+        existing = cursor.fetchone()
+
+        values = (
+            item.get("title"),
+            item.get("price_eur"),
+            item.get("locality"),
+            item.get("property_type"),
+            item.get("bedrooms"),
+            item.get("seller_type"),
+            item.get("is_freehold", False),
+            item.get("has_airspace", False),
+            item.get("has_sea_view", False),
+            item.get("is_shell_form", False),
+            key_features,
+            item.get("source"),
+            item.get("scraped_at"),
+            item.get("updated_at") or now,
+            distance_km,
+            url,
+        )
+
+        if existing is None:
+            cursor.execute(
+                """
+                INSERT INTO listings (
+                    title, price_eur, locality, property_type,
+                    bedrooms, seller_type, is_freehold, has_airspace,
+                    has_sea_view, is_shell_form, key_features, source,
+                    scraped_at, updated_at, distance_to_gzira_km, url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                values,
+            )
+            inserted += 1
+            if item.get("price_eur") is not None:
+                cursor.execute(
+                    """
+                    INSERT INTO price_history (url, price_eur, recorded_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    (url, item.get("price_eur"), now),
+                )
+        else:
+            old_price = existing["price_eur"]
+            new_price = item.get("price_eur")
+            if new_price is not None and new_price != old_price:
+                cursor.execute(
+                    """
+                    INSERT INTO price_history (url, price_eur, recorded_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    (url, new_price, now),
+                )
+                price_changes += 1
+
+            cursor.execute(
+                """
+                UPDATE listings SET
+                    title = ?,
+                    price_eur = ?,
+                    locality = ?,
+                    property_type = ?,
+                    bedrooms = ?,
+                    seller_type = ?,
+                    is_freehold = ?,
+                    has_airspace = ?,
+                    has_sea_view = ?,
+                    is_shell_form = ?,
+                    key_features = ?,
+                    source = COALESCE(?, source),
+                    scraped_at = COALESCE(?, scraped_at),
+                    updated_at = ?,
+                    distance_to_gzira_km = COALESCE(?, distance_to_gzira_km)
+                WHERE url = ?
+                """,
+                values,
+            )
+            updated += 1
+
+    conn.commit()
+    conn.close()
+
+    stats = {
+        "inserted": inserted,
+        "updated": updated,
+        "price_changes": price_changes,
+        "skipped_gozo": skipped_gozo,
+    }
+    print(
+        f"💾 DB '{db_name}': +{inserted} new, ~{updated} updated, "
+        f"{price_changes} price change(s) logged"
+        + (f", skipped {skipped_gozo} Gozo" if skipped_gozo else "")
+        + "."
+    )
+    return stats
+
+
+def load_parsed_and_save(
+    parsed_path: Path = PARSED_PATH, db_name: str | Path = DB_PATH
+) -> None:
+    init_db(db_name)
+    parsed_data = load_json_list(parsed_path)
+    if not parsed_data:
+        print(f"⚠️ Brak danych w {parsed_path} — nic do zapisania.")
+        return
+    save_listings_to_db(parsed_data, db_name=db_name)

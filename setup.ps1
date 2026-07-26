@@ -43,37 +43,32 @@ $venvPip = ".\venv\Scripts\pip.exe"
 # 4. Instalacja wymaganych bibliotek (requirements)
 Write-Host "`n[4/5] Instalacja pakietów Python..." -ForegroundColor Yellow
 
-# Tworzenie pliku requirements.txt jeśli nie istnieje
 if (-not (Test-Path "requirements.txt")) {
-    Set-Content -Path "requirements.txt" -Value @"
-requests
-beautifulsoup4
-pydantic
-ollama
-"@
-    Write-Host "  └─ Wygenerowano plik 'requirements.txt'." -ForegroundColor Green
+    Write-Host "❌ BŁĄD: Brak pliku requirements.txt w repozytorium." -ForegroundColor Red
+    exit 1
 }
 
 & $venvPip install --upgrade pip | Out-Null
 & $venvPip install -r requirements.txt
 Write-Host "  └─ Pomyślnie zainstalowano wszystkie zależności." -ForegroundColor Green
 
-# 5. Inicjalizacja struktury bazy danych
+# 5. Inicjalizacja struktury bazy danych (tylko schema — bez parsed JSON)
 Write-Host "`n[5/5] Inicjalizacja bazy danych SQLite..." -ForegroundColor Yellow
-if (Test-Path "database.py") {
-    & $venvPython database.py
-    Write-Host "  └─ Baza danych jest gotowa do użycia." -ForegroundColor Green
-} else {
-    Write-Host "  └─ Pominięto inicjalizację (brak pliku database.py)." -ForegroundColor DarkGray
-}
+& $venvPython -m malta_housing init-db
+Write-Host "  └─ Baza danych jest gotowa do użycia." -ForegroundColor Green
 
 Write-Host "`n==================================================================" -ForegroundColor Cyan
 Write-Host "✅ INSTALACJA ZAKOŃCZONA SUKCESEM!" -ForegroundColor Green
 Write-Host "==================================================================" -ForegroundColor Cyan
 Write-Host "Aby rozpocząć pracę z projektem, aktywuj środowisko:" -ForegroundColor White
 Write-Host "   .\venv\Scripts\Activate.ps1" -ForegroundColor Yellow
-Write-Host "`nNastępnie uruchom kolejno:" -ForegroundColor White
-Write-Host "   python scraper.py" -ForegroundColor Yellow
-Write-Host "   python parser.py" -ForegroundColor Yellow
-Write-Host "   python database.py" -ForegroundColor Yellow
+Write-Host "`nPełny pipeline (przykład):" -ForegroundColor White
+Write-Host "   python -m malta_housing run --source maltapark --pages 3" -ForegroundColor Yellow
+Write-Host "`nAlbo kroki osobno:" -ForegroundColor White
+Write-Host "   python -m malta_housing scrape --source ownersbest --pages 3" -ForegroundColor Yellow
+Write-Host "   python -m malta_housing parse" -ForegroundColor Yellow
+Write-Host "   python -m malta_housing db" -ForegroundColor Yellow
+Write-Host "`nPrzeglądarka bazy (HTML):" -ForegroundColor White
+Write-Host "   python -m malta_housing serve" -ForegroundColor Yellow
+Write-Host "   http://127.0.0.1:8765" -ForegroundColor Yellow
 Write-Host "==================================================================`n" -ForegroundColor Cyan

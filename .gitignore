@@ -13,8 +13,11 @@ __pycache__/
 # Baza danych SQLite i lokalne stagingi danych (pobierane dynamicznie)
 *.db
 *.sqlite3
+data/*
+!data/.gitkeep
 scraped_listings.json
 parsed_listings.json
+parse_failures.jsonl
 
 # Pliki środowiskowe i klucze (dobre praktyki na przyszłość)
 .env
