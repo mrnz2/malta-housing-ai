@@ -289,7 +289,7 @@ def append_jsonl(path: Path, record: dict[str, Any]) -> None:
 
 
 def ensure_source(value: str) -> SourceType:
-    if value not in {"maltapark", "ownersbest", "djar", "propertymarket"}:
+    if value not in {"maltapark", "ownersbest", "djar", "propertymarket", "yitaku"}:
         raise ValueError(f"Unknown source: {value}")
     return value  # type: ignore[return-value]
 
@@ -299,6 +299,7 @@ _URL_SOURCE_HOSTS: tuple[tuple[str, SourceType], ...] = (
     ("ownersbest.com.mt", "ownersbest"),
     ("djar.ai", "djar"),
     ("propertymarket.com.mt", "propertymarket"),
+    ("yitaku.com", "yitaku"),
 )
 
 
@@ -323,6 +324,6 @@ def resolve_source(source: str | None, url: str | None = None) -> SourceType | N
     """Prefer an explicit source; otherwise infer from the listing URL."""
     if isinstance(source, str):
         cleaned = source.strip().lower()
-        if cleaned in {"maltapark", "ownersbest", "djar", "propertymarket"}:
+        if cleaned in {"maltapark", "ownersbest", "djar", "propertymarket", "yitaku"}:
             return cleaned  # type: ignore[return-value]
     return infer_source_from_url(url)
