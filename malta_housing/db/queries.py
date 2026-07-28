@@ -23,6 +23,8 @@ _EMPTY_STATS: dict[str, Any] = {
 }
 
 _ORDER_SQL = {
+    "created_desc": "CASE WHEN created_at IS NULL THEN 1 ELSE 0 END, created_at DESC, id DESC",
+    "created_asc": "CASE WHEN created_at IS NULL THEN 1 ELSE 0 END, created_at ASC, id ASC",
     "updated_desc": "CASE WHEN updated_at IS NULL THEN 1 ELSE 0 END, updated_at DESC, id DESC",
     "updated_asc": "CASE WHEN updated_at IS NULL THEN 1 ELSE 0 END, updated_at ASC, id ASC",
     "price_asc": "CASE WHEN price_eur IS NULL THEN 1 ELSE 0 END, price_eur ASC, id DESC",
@@ -148,7 +150,7 @@ def list_listings(
     freehold: bool | None = None,
     airspace: bool | None = None,
     show_hidden: bool = False,
-    sort: str = "updated_desc",
+    sort: str = "created_desc",
     limit: int = 100,
     offset: int = 0,
     db_name: str | Path = DB_PATH,
@@ -190,7 +192,7 @@ def list_listings(
         where.append("has_airspace = 1")
 
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-    order_sql = _ORDER_SQL.get(sort, _ORDER_SQL["updated_desc"])
+    order_sql = _ORDER_SQL.get(sort, _ORDER_SQL["created_desc"])
     limit = max(1, min(limit, 500))
     offset = max(0, offset)
 
