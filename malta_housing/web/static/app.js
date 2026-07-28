@@ -131,6 +131,19 @@ function formatScore(value) {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
+function formatDate(value) {
+  if (value == null || value === "") return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+}
+
 function scoreClass(value) {
   if (value == null || Number.isNaN(Number(value))) return "score-none";
   const n = Number(value);
@@ -326,9 +339,9 @@ async function openDetail(id) {
     ["Airspace", listing.has_airspace ? "Yes" : "No"],
     ["Sea view", listing.has_sea_view ? "Yes" : "No"],
     ["Shell form", listing.is_shell_form ? "Yes" : "No"],
-    ["AI evaluated", listing.ai_evaluated_at || "—"],
-    ["Scraped", listing.scraped_at || "—"],
-    ["Updated", listing.updated_at || "—"],
+    ["AI evaluated", formatDate(listing.ai_evaluated_at)],
+    ["Scraped", formatDate(listing.scraped_at)],
+    ["Updated", formatDate(listing.updated_at)],
   ];
   grid.innerHTML = fields
     .map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`)
@@ -345,7 +358,7 @@ async function openDetail(id) {
     ? history
         .map(
           (h) =>
-            `<li><span>${escapeHtml(h.recorded_at || "—")}</span><strong>${euro(h.price_eur)}</strong></li>`
+            `<li><span>${escapeHtml(formatDate(h.recorded_at))}</span><strong>${euro(h.price_eur)}</strong></li>`
         )
         .join("")
     : "<li><span>No history yet</span><strong>—</strong></li>";
