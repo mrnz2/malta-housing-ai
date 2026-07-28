@@ -27,6 +27,7 @@ $sources = @(
     "djar"
     "propertymarket"
     "yitaku"
+    "remax"
 )
 
 Write-Host "Malta Housing AI - full pipeline (all scrapers -> parse -> db)" -ForegroundColor Cyan

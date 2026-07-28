@@ -20,6 +20,7 @@ An automated pipeline for scraping, processing, analyzing, and storing real esta
 │                         │ -> djar.py
 │                         │ -> propertymarket.py
 │                         │ -> yitaku.py
+│                         │ -> remax.py
 └────────────┬────────────┘
              │ Merges raw payloads (by URL)
              ▼
@@ -62,7 +63,8 @@ malta-housing-ai/
 │   │   ├── ownersbest.py
 │   │   ├── djar.py
 │   │   ├── propertymarket.py
-│   │   └── yitaku.py
+│   │   ├── yitaku.py
+│   │   └── remax.py
 │   ├── parsing/
 │   │   └── llm.py
 │   ├── db/
@@ -88,6 +90,7 @@ malta-housing-ai/
 * `malta_housing/scrapers/djar.py`: Scrapes **Djar.ai** (`source=djar`).
 * `malta_housing/scrapers/propertymarket.py`: Scrapes **Property Market Malta** (`source=propertymarket`).
 * `malta_housing/scrapers/yitaku.py`: Scrapes **Yitaku** JSON API (`source=yitaku`, €100k–€400k).
+* `malta_housing/scrapers/remax.py`: Scrapes **RE/MAX Malta** JSON API (`source=remax`, €100k–€400k).
 * `malta_housing/parsing/llm.py`: Ollama extraction with checkpoints; skips URLs already in DB (unless `--force`).
 * `malta_housing/db/store.py`: UPSERTs into `data/malta_properties.db`; logs price changes in `price_history`.
 * `malta_housing/web/`: Local browser UI — filter/search listings, open detail + price history.
@@ -126,7 +129,7 @@ malta-housing-ai/
 | `is_shell_form` | `bool` | |
 | `seller_type` | `OWNER \| AGENT \| SENSAR \| UNKNOWN \| null` | |
 | `key_features` | `list[str]` | Max ~4 features |
-| `source` | `maltapark \| ownersbest \| djar \| propertymarket \| yitaku \| null` | Portal origin |
+| `source` | `maltapark \| ownersbest \| djar \| propertymarket \| yitaku \| remax \| null` | Portal origin |
 | `scraped_at` | `str \| null` | ISO timestamp from scrape |
 | `updated_at` | `str \| null` | ISO timestamp of last parse/DB write |
 | `distance_to_gzira_km` | `float \| null` | Estimated km to Gżira from `to_gzira.csv` |
@@ -183,7 +186,7 @@ python -m malta_housing run --source maltapark --pages 3
 python -m malta_housing run --source ownersbest --pages 3
 python -m malta_housing run --source djar --pages 3
 python -m malta_housing run --source propertymarket --pages 3
-python -m malta_housing run --source yitaku --pages 3
+python -m malta_housing run --source remax --pages 3
 ```
 
 **Step by step:**
