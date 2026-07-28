@@ -76,7 +76,6 @@ def cmd_rank(args: argparse.Namespace) -> None:
         source=args.source,
         force=args.force,
     )
-    run_server(host=args.host, port=args.port)
 
 
 def cmd_purge_gozo(_args: argparse.Namespace) -> None:
