@@ -33,7 +33,17 @@ _ORDER_SQL = {
     "title_asc": "title COLLATE NOCASE ASC, id DESC",
     "gzira_asc": "CASE WHEN distance_to_gzira_km IS NULL THEN 1 ELSE 0 END, distance_to_gzira_km ASC, id DESC",
     "gzira_desc": "CASE WHEN distance_to_gzira_km IS NULL THEN 1 ELSE 0 END, distance_to_gzira_km DESC, id DESC",
+    "ai_score_desc": "CASE WHEN ai_score IS NULL THEN 1 ELSE 0 END, ai_score DESC, id DESC",
+    "ai_score_asc": "CASE WHEN ai_score IS NULL THEN 1 ELSE 0 END, ai_score ASC, id DESC",
 }
+
+_LISTING_COLUMNS = """
+    id, url, title, price_eur, locality, property_type, bedrooms,
+    seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form,
+    key_features, source, scraped_at, created_at, updated_at,
+    distance_to_gzira_km, is_hidden, notes,
+    ai_score, ai_summary, ai_evaluated_at
+"""
 
 
 def _row_to_listing(row: sqlite3.Row) -> dict[str, Any]:
@@ -205,10 +215,7 @@ def list_listings(
         cur.execute(
             f"""
             SELECT
-                id, url, title, price_eur, locality, property_type, bedrooms,
-                seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form,
-                key_features, source, scraped_at, created_at, updated_at,
-                distance_to_gzira_km, is_hidden, notes
+                {_LISTING_COLUMNS}
             FROM listings
             {where_sql}
             ORDER BY {order_sql}
@@ -232,14 +239,13 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
     cur = conn.cursor()
     try:
         cur.execute(
-            """
+            f"""
             SELECT
-                id, url, title, price_eur, locality, property_type, bedrooms,
-                seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form,
-                key_features, source, scraped_at, created_at, updated_at,
-                distance_to_gzira_km, is_hidden, notes
+                {_LISTING_COLUMNS},
+                e.pros, e.cons, e.evaluation_json
             FROM listings
-            WHERE id = ?
+            LEFT JOIN evaluations e ON e.url = listings.url
+            WHERE listings.id = ?
             """,
             (listing_id,),
         )
@@ -248,7 +254,10 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
         conn.close()
         return None
     conn.close()
-    return _row_to_listing(row) if row else None
+    if not row:
+        return None
+    listing = _enrich_with_evaluation(_row_to_listing(row))
+    return listing
 
 
 def get_rank_candidates(
@@ -273,10 +282,7 @@ def get_rank_candidates(
         cur.execute(
             f"""
             SELECT
-                id, url, title, price_eur, locality, property_type, bedrooms,
-                seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form,
-                key_features, source, scraped_at, created_at, updated_at,
-                distance_to_gzira_km, is_hidden, notes
+                {_LISTING_COLUMNS}
             FROM listings
             {where_sql}
             ORDER BY price_eur ASC, id DESC
@@ -316,11 +322,12 @@ def get_ranked_listings(
     if not Path(db_name).exists():
         return []
 
-    where = [_VISIBLE.replace("is_hidden", "l.is_hidden")]
+    where = [_VISIBLE]
     params: list[Any] = []
     if max_price is not None:
-        where.append("l.price_eur IS NOT NULL AND l.price_eur <= ?")
+        where.append("price_eur IS NOT NULL AND price_eur <= ?")
         params.append(max_price)
+    where.append("ai_score IS NOT NULL")
 
     where_sql = f"WHERE {' AND '.join(where)}"
     limit = max(1, min(limit, 500))
@@ -331,15 +338,12 @@ def get_ranked_listings(
         cur.execute(
             f"""
             SELECT
-                l.id, l.url, l.title, l.price_eur, l.locality, l.property_type, l.bedrooms,
-                l.seller_type, l.is_freehold, l.has_airspace, l.has_sea_view, l.is_shell_form,
-                l.key_features, l.source, l.scraped_at, l.created_at, l.updated_at,
-                l.distance_to_gzira_km, l.is_hidden, l.notes,
-                e.ai_score, e.ai_summary, e.pros, e.cons, e.evaluation_json, e.evaluated_at
-            FROM listings l
-            INNER JOIN evaluations e ON e.url = l.url
+                {_LISTING_COLUMNS},
+                e.pros, e.cons, e.evaluation_json, e.evaluated_at
+            FROM listings
+            LEFT JOIN evaluations e ON e.url = listings.url
             {where_sql}
-            ORDER BY e.ai_score DESC, l.price_eur ASC, l.id DESC
+            ORDER BY listings.ai_score DESC, listings.price_eur ASC, listings.id DESC
             LIMIT ?
             """,
             [*params, limit],

@@ -99,11 +99,25 @@ function formatKm(value) {
   return `${Number.isInteger(n) ? n : n.toFixed(1)} km`;
 }
 
+function formatScore(value) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  const n = Number(value);
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function scoreClass(value) {
+  if (value == null || Number.isNaN(Number(value))) return "score-none";
+  const n = Number(value);
+  if (n >= 8) return "score-high";
+  if (n >= 5) return "score-mid";
+  return "score-low";
+}
+
 function renderRows(items) {
   els.body.innerHTML = "";
   if (!items.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="8"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
+    tr.innerHTML = `<td colspan="9"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
     els.body.appendChild(tr);
     return;
   }
@@ -120,11 +134,16 @@ function renderRows(items) {
     const notesCell = notesText
       ? `<td class="notes-cell"><span class="cell-notes" title="${escapeHtml(notesText)}">${escapeHtml(notesText)}</span></td>`
       : `<td class="notes-cell"></td>`;
+    const score = item.ai_score;
+    const scoreCell = score == null
+      ? `<td class="score-cell">—</td>`
+      : `<td class="score-cell"><span class="score-badge ${scoreClass(score)}" title="${escapeHtml(item.ai_summary || "")}">${formatScore(score)}</span></td>`;
     tr.innerHTML = `
       <td>
         <div class="cell-title">${escapeHtml(item.title || "Untitled")}</div>
         <span class="cell-meta">${flags || escapeHtml(item.property_type || "")}</span>
       </td>
+      ${scoreCell}
       <td>${escapeHtml(item.locality || "—")}</td>
       <td class="price">${formatKm(item.distance_to_gzira_km)}</td>
       <td class="price">${euro(item.price_eur)}</td>
@@ -255,6 +274,22 @@ async function openDetail(id) {
   document.getElementById("detail-title").textContent = listing.title || "Untitled";
   document.getElementById("detail-price").textContent = euro(listing.price_eur);
 
+  const evalBlock = document.getElementById("detail-evaluation");
+  const hasScore = listing.ai_score != null && !Number.isNaN(Number(listing.ai_score));
+  evalBlock.hidden = !hasScore;
+  if (hasScore) {
+    document.getElementById("detail-score").textContent = `${formatScore(listing.ai_score)} / 10`;
+    document.getElementById("detail-summary").textContent = listing.ai_summary || "";
+    const pros = Array.isArray(listing.pros) ? listing.pros : [];
+    const cons = Array.isArray(listing.cons) ? listing.cons : [];
+    document.getElementById("detail-pros").innerHTML = pros.length
+      ? `<li class="eval-label">Pros</li>${pros.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}`
+      : "";
+    document.getElementById("detail-cons").innerHTML = cons.length
+      ? `<li class="eval-label">Cons</li>${cons.map((c) => `<li>${escapeHtml(c)}</li>`).join("")}`
+      : "";
+  }
+
   const grid = document.getElementById("detail-grid");
   const fields = [
     ["Bedrooms", listing.bedrooms ?? "—"],
@@ -264,6 +299,7 @@ async function openDetail(id) {
     ["Airspace", listing.has_airspace ? "Yes" : "No"],
     ["Sea view", listing.has_sea_view ? "Yes" : "No"],
     ["Shell form", listing.is_shell_form ? "Yes" : "No"],
+    ["AI evaluated", listing.ai_evaluated_at || "—"],
     ["Scraped", listing.scraped_at || "—"],
     ["Updated", listing.updated_at || "—"],
   ];

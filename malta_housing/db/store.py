@@ -67,6 +67,9 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
         ("distance_to_gzira_km", "REAL"),
         ("is_hidden", "BOOLEAN DEFAULT 0"),
         ("notes", "TEXT"),
+        ("ai_score", "REAL"),
+        ("ai_summary", "TEXT"),
+        ("ai_evaluated_at", "TIMESTAMP"),
     ):
         _ensure_column(cursor, "listings", column, col_def)
 
@@ -107,6 +110,7 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
     conn.commit()
     _backfill_gzira_distances(conn)
     _backfill_sources(conn)
+    _backfill_listing_scores(conn)
     conn.close()
 
 
@@ -167,6 +171,41 @@ def _backfill_gzira_distances(conn: sqlite3.Connection) -> int:
     if updated:
         conn.commit()
         print(f"📍 Uzupełniono distance_to_gzira_km dla {updated} ofert.")
+    return updated
+
+
+def _backfill_listing_scores(conn: sqlite3.Connection) -> int:
+    """Copy ai_score / ai_summary from evaluations into listings when missing."""
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            UPDATE listings
+            SET
+                ai_score = (
+                    SELECT e.ai_score FROM evaluations e WHERE e.url = listings.url
+                ),
+                ai_summary = (
+                    SELECT e.ai_summary FROM evaluations e WHERE e.url = listings.url
+                ),
+                ai_evaluated_at = (
+                    SELECT e.evaluated_at FROM evaluations e WHERE e.url = listings.url
+                )
+            WHERE url IN (SELECT url FROM evaluations)
+              AND (
+                    ai_score IS NULL
+                    OR ai_summary IS NULL
+                    OR ai_evaluated_at IS NULL
+              )
+            """
+        )
+        updated = cursor.rowcount
+    except sqlite3.OperationalError:
+        return 0
+
+    if updated:
+        conn.commit()
+        print(f"📊 Uzupełniono ai_score dla {updated} ofert w listings.")
     return updated
 
 
@@ -489,6 +528,14 @@ def save_evaluation(
             evaluated_at = excluded.evaluated_at
         """,
         (url, score, summary, pros, cons, payload, now),
+    )
+    cursor.execute(
+        """
+        UPDATE listings
+        SET ai_score = ?, ai_summary = ?, ai_evaluated_at = ?
+        WHERE url = ?
+        """,
+        (score, summary, now, url),
     )
     conn.commit()
     conn.close()
