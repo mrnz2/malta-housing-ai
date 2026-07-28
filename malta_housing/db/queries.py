@@ -52,6 +52,9 @@ def _row_to_listing(row: sqlite3.Row) -> dict[str, Any]:
     return data
 
 
+_VISIBLE = "(is_hidden = 0 OR is_hidden IS NULL)"
+
+
 def get_stats(db_name: str | Path = DB_PATH) -> dict[str, Any]:
     if not Path(db_name).exists():
         return dict(_EMPTY_STATS)
@@ -59,26 +62,27 @@ def get_stats(db_name: str | Path = DB_PATH) -> dict[str, Any]:
     conn = _connect(db_name)
     cur = conn.cursor()
     try:
-        cur.execute("SELECT COUNT(*) AS n FROM listings")
+        cur.execute(f"SELECT COUNT(*) AS n FROM listings WHERE {_VISIBLE}")
         total = cur.fetchone()["n"]
 
         cur.execute(
-            """
+            f"""
             SELECT
                 COUNT(price_eur) AS with_price,
                 AVG(price_eur) AS avg_price,
                 MIN(price_eur) AS min_price,
                 MAX(price_eur) AS max_price
             FROM listings
-            WHERE price_eur IS NOT NULL
+            WHERE price_eur IS NOT NULL AND {_VISIBLE}
             """
         )
         price_row = cur.fetchone()
 
         cur.execute(
-            """
+            f"""
             SELECT COALESCE(source, 'unknown') AS source, COUNT(*) AS n
             FROM listings
+            WHERE {_VISIBLE}
             GROUP BY COALESCE(source, 'unknown')
             ORDER BY n DESC
             """
@@ -86,9 +90,9 @@ def get_stats(db_name: str | Path = DB_PATH) -> dict[str, Any]:
         sources = {row["source"]: row["n"] for row in cur.fetchall()}
 
         cur.execute(
-            """
+            f"""
             SELECT locality FROM listings
-            WHERE locality IS NOT NULL AND TRIM(locality) != ''
+            WHERE locality IS NOT NULL AND TRIM(locality) != '' AND {_VISIBLE}
             GROUP BY locality
             ORDER BY locality COLLATE NOCASE
             """
@@ -96,9 +100,9 @@ def get_stats(db_name: str | Path = DB_PATH) -> dict[str, Any]:
         localities = [row["locality"] for row in cur.fetchall()]
 
         cur.execute(
-            """
+            f"""
             SELECT seller_type FROM listings
-            WHERE seller_type IS NOT NULL AND TRIM(seller_type) != ''
+            WHERE seller_type IS NOT NULL AND TRIM(seller_type) != '' AND {_VISIBLE}
             GROUP BY seller_type
             ORDER BY seller_type
             """
@@ -106,9 +110,9 @@ def get_stats(db_name: str | Path = DB_PATH) -> dict[str, Any]:
         seller_types = [row["seller_type"] for row in cur.fetchall()]
 
         cur.execute(
-            """
+            f"""
             SELECT property_type FROM listings
-            WHERE property_type IS NOT NULL AND TRIM(property_type) != ''
+            WHERE property_type IS NOT NULL AND TRIM(property_type) != '' AND {_VISIBLE}
             GROUP BY property_type
             ORDER BY property_type COLLATE NOCASE
             """
@@ -156,7 +160,7 @@ def list_listings(
     params: list[Any] = []
 
     if not show_hidden:
-        where.append("(is_hidden = 0 OR is_hidden IS NULL)")
+        where.append(_VISIBLE)
 
     if q:
         where.append("(title LIKE ? OR locality LIKE ? OR url LIKE ?)")

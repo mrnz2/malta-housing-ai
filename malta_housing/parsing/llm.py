@@ -14,6 +14,7 @@ from malta_housing.common import (
     STAGING_PATH,
     append_jsonl,
     load_json_list,
+    resolve_source,
     save_json_list,
 )
 from malta_housing.db.store import get_known_urls
@@ -151,7 +152,7 @@ def run_parser(
             result = ParsedListing(
                 **parsed_data.model_dump(),
                 url=item["url"],
-                source=item.get("source"),
+                source=resolve_source(item.get("source"), item["url"]),
                 scraped_at=item.get("scraped_at"),
                 updated_at=utc_now_iso(),
                 distance_to_gzira_km=distance_to_gzira_km(parsed_data.locality),

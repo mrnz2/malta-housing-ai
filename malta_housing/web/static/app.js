@@ -158,6 +158,7 @@ async function setHidden(id, hidden) {
     await loadListings();
     return;
   }
+  await loadStats();
   // If we hid an item and are not showing hidden, remove it from the current view.
   if (hidden && !state.filters.show_hidden) {
     await loadListings();

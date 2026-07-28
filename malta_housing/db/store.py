@@ -7,7 +7,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from malta_housing.common import PARSED_PATH, load_json_list
+from malta_housing.common import PARSED_PATH, load_json_list, resolve_source
 from malta_housing.distances import distance_to_gzira_km
 from malta_housing.geo import is_gozo_record
 from malta_housing.models import utc_now_iso
@@ -84,7 +84,37 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
 
     conn.commit()
     _backfill_gzira_distances(conn)
+    _backfill_sources(conn)
     conn.close()
+
+
+def _backfill_sources(conn: sqlite3.Connection) -> int:
+    """Fill missing source from listing URL host."""
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT id, url FROM listings
+            WHERE source IS NULL OR TRIM(source) = ''
+            """
+        )
+    except sqlite3.OperationalError:
+        return 0
+
+    updated = 0
+    for row in cursor.fetchall():
+        source = resolve_source(None, row["url"])
+        if source is None:
+            continue
+        cursor.execute(
+            "UPDATE listings SET source = ? WHERE id = ?",
+            (source, row["id"]),
+        )
+        updated += 1
+    if updated:
+        conn.commit()
+        print(f"🏷️ Uzupełniono source dla {updated} ofert.")
+    return updated
 
 
 def _backfill_gzira_distances(conn: sqlite3.Connection) -> int:
@@ -210,6 +240,8 @@ def save_listings_to_db(
         if distance_km is None:
             distance_km = distance_to_gzira_km(item.get("locality"))
 
+        source = resolve_source(item.get("source"), url)
+
         cursor.execute("SELECT price_eur, title FROM listings WHERE url = ?", (url,))
         existing = cursor.fetchone()
 
@@ -225,7 +257,7 @@ def save_listings_to_db(
             item.get("has_sea_view", False),
             item.get("is_shell_form", False),
             key_features,
-            item.get("source"),
+            source,
             item.get("scraped_at"),
             item.get("updated_at") or now,
             distance_km,
@@ -280,7 +312,7 @@ def save_listings_to_db(
                     has_sea_view = ?,
                     is_shell_form = ?,
                     key_features = ?,
-                    source = COALESCE(?, source),
+                    source = COALESCE(?, NULLIF(TRIM(source), '')),
                     scraped_at = COALESCE(?, scraped_at),
                     updated_at = ?,
                     distance_to_gzira_km = COALESCE(?, distance_to_gzira_km)

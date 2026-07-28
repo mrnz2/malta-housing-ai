@@ -32,6 +32,8 @@ __all__ = [
     "append_jsonl",
     "configure_stdio",
     "ensure_source",
+    "infer_source_from_url",
+    "resolve_source",
     "extract_title_and_text",
     "load_json_list",
     "merge_staging",
@@ -290,3 +292,37 @@ def ensure_source(value: str) -> SourceType:
     if value not in {"maltapark", "ownersbest", "djar", "propertymarket"}:
         raise ValueError(f"Unknown source: {value}")
     return value  # type: ignore[return-value]
+
+
+_URL_SOURCE_HOSTS: tuple[tuple[str, SourceType], ...] = (
+    ("maltapark.com", "maltapark"),
+    ("ownersbest.com.mt", "ownersbest"),
+    ("djar.ai", "djar"),
+    ("propertymarket.com.mt", "propertymarket"),
+)
+
+
+def infer_source_from_url(url: str | None) -> SourceType | None:
+    """Map a listing URL to its scraper source portal."""
+    if not url:
+        return None
+    host = (urlparse(url).hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    for needle, source in _URL_SOURCE_HOSTS:
+        if host == needle or host.endswith("." + needle):
+            return source
+    lowered = url.lower()
+    for needle, source in _URL_SOURCE_HOSTS:
+        if needle in lowered:
+            return source
+    return None
+
+
+def resolve_source(source: str | None, url: str | None = None) -> SourceType | None:
+    """Prefer an explicit source; otherwise infer from the listing URL."""
+    if isinstance(source, str):
+        cleaned = source.strip().lower()
+        if cleaned in {"maltapark", "ownersbest", "djar", "propertymarket"}:
+            return cleaned  # type: ignore[return-value]
+    return infer_source_from_url(url)
