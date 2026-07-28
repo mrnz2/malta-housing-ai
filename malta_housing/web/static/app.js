@@ -125,10 +125,34 @@ function formatKm(value) {
   return `${Number.isInteger(n) ? n : n.toFixed(1)} km`;
 }
 
+function formatSeaProximity(value) {
+  if (!value) return "—";
+  const labels = {
+    nad_morzem: "nad morzem",
+    blisko: "blisko",
+    daleko: "daleko",
+  };
+  return labels[value] || String(value).replaceAll("_", " ");
+}
+
+function formatAdjustment(value) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  const n = Number(value);
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${Number.isInteger(n) ? n : n.toFixed(1)}`;
+}
+
 function formatScore(value) {
   if (value == null || Number.isNaN(Number(value))) return "—";
   const n = Number(value);
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function formatBreakdown(breakdown) {
+  if (!breakdown || typeof breakdown !== "object") return "";
+  return Object.entries(breakdown)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(" · ");
 }
 
 function formatDate(value) {
@@ -156,7 +180,7 @@ function renderRows(items) {
   els.body.innerHTML = "";
   if (!items.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="9"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
+    tr.innerHTML = `<td colspan="10"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
     els.body.appendChild(tr);
     return;
   }
@@ -185,6 +209,7 @@ function renderRows(items) {
       ${scoreCell}
       <td>${escapeHtml(item.locality || "—")}</td>
       <td class="price">${formatKm(item.distance_to_gzira_km)}</td>
+      <td>${escapeHtml(formatSeaProximity(item.sea_proximity))}</td>
       <td class="price">${euro(item.price_eur)}</td>
       <td>${item.bedrooms ?? "—"}</td>
       <td>${escapeHtml(item.source || "—")}</td>
@@ -318,7 +343,17 @@ async function openDetail(id) {
   const hasScore = listing.ai_score != null && !Number.isNaN(Number(listing.ai_score));
   evalBlock.hidden = !hasScore;
   if (hasScore) {
-    document.getElementById("detail-score").textContent = `${formatScore(listing.ai_score)} / 10`;
+    const base = listing.base_score;
+    const adj = listing.qualitative_adjustment;
+    const scoreText =
+      base != null && adj != null
+        ? `${formatScore(listing.ai_score)} / 10 (base ${formatScore(base)} + LLM ${formatAdjustment(adj)})`
+        : `${formatScore(listing.ai_score)} / 10`;
+    document.getElementById("detail-score").textContent = scoreText;
+    const breakdownEl = document.getElementById("detail-score-breakdown");
+    const breakdownText = formatBreakdown(listing.score_breakdown);
+    breakdownEl.textContent = breakdownText;
+    breakdownEl.hidden = !breakdownText;
     document.getElementById("detail-summary").textContent = listing.ai_summary || "";
     const pros = Array.isArray(listing.pros) ? listing.pros : [];
     const cons = Array.isArray(listing.cons) ? listing.cons : [];
@@ -335,6 +370,7 @@ async function openDetail(id) {
     ["Bedrooms", listing.bedrooms ?? "—"],
     ["Seller", listing.seller_type || "—"],
     ["Distance to Gżira", formatKm(listing.distance_to_gzira_km)],
+    ["Sea proximity", formatSeaProximity(listing.sea_proximity)],
     ["Freehold", listing.is_freehold ? "Yes" : "No"],
     ["Airspace", listing.has_airspace ? "Yes" : "No"],
     ["Sea view", listing.has_sea_view ? "Yes" : "No"],

@@ -8,7 +8,9 @@ alwaysApply: true
 Before editing, read `AGENTS.md` at the repo root. Summary:
 
 - Package is `malta_housing/` (not flat `scraper.py` / `parser.py` / `database.py`).
-- Pipeline: `scrapers/` → `data/scraped_listings.json` → `parsing/llm.py` → `data/parsed_listings.json` → `db/store.py` → `data/malta_properties.db` → `analysis/` (`rank`) / `web/` (`serve`).
+- Pipeline: `scrapers/` → `data/scraped_listings.json` → `parsing/llm.py` → `data/parsed_listings.json` → `db/store.py` → `data/malta_properties.db` → `analysis/` (`scoring.py` + `evaluator.py` + `rank`) / `web/` (`serve`).
+- Locality data: `to_gzira.csv` → `distances.py` (km to Gżira + `sea_proximity`: nad morzem / blisko / daleko).
+- Hybrid rank: Python base score 0–8 (price/m², Gżira, sea, area, flags) + Ollama qualitative adjustment −2…+2 → `ai_score` 0–10. Tune in `analysis/scoring.py`; refresh with `rank --force`.
 - Sources: `maltapark`, `ownersbest`, `djar`, `propertymarket`, `yitaku`, `remax`, `simonmamo` — extend `SourceType`, CLI, and `run_all.ps1` together.
 - Staging items need `url`, `title`, `raw_text`, `source`, `scraped_at`; merge via `merge_staging` (by URL). `raw_text` also needed for `rank`.
 - Use `HttpClient` from `common.py` (retries, optional `curl_cffi` impersonate, SiteGround PoW).

@@ -9,7 +9,7 @@ from typing import Any
 
 from malta_housing.budget import MAX_PRICE_EUR, MIN_PRICE_EUR, is_out_of_budget
 from malta_housing.common import PARSED_PATH, load_json_list, resolve_source
-from malta_housing.distances import distance_to_gzira_km
+from malta_housing.distances import distance_to_gzira_km, sea_proximity_for
 from malta_housing.geo import is_gozo_record
 from malta_housing.models import utc_now_iso
 from malta_housing.paths import DB_PATH, ensure_data_dir
@@ -65,6 +65,7 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
         ("scraped_at", "TIMESTAMP"),
         ("updated_at", "TIMESTAMP"),
         ("distance_to_gzira_km", "REAL"),
+        ("sea_proximity", "TEXT"),
         ("is_hidden", "BOOLEAN DEFAULT 0"),
         ("notes", "TEXT"),
         ("ai_score", "REAL"),
@@ -108,7 +109,7 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
     )
 
     conn.commit()
-    _backfill_gzira_distances(conn)
+    _backfill_locality_fields(conn)
     _backfill_sources(conn)
     _backfill_listing_scores(conn)
     conn.close()
@@ -143,14 +144,18 @@ def _backfill_sources(conn: sqlite3.Connection) -> int:
     return updated
 
 
-def _backfill_gzira_distances(conn: sqlite3.Connection) -> int:
-    """Fill missing distance_to_gzira_km from locality + to_gzira.csv."""
+def _backfill_locality_fields(conn: sqlite3.Connection) -> int:
+    """Fill missing distance_to_gzira_km and sea_proximity from locality + to_gzira.csv."""
     cursor = conn.cursor()
     try:
         cursor.execute(
             """
             SELECT id, locality FROM listings
-            WHERE distance_to_gzira_km IS NULL
+            WHERE (
+                distance_to_gzira_km IS NULL
+                OR sea_proximity IS NULL
+                OR TRIM(sea_proximity) = ''
+            )
               AND locality IS NOT NULL
               AND TRIM(locality) != ''
             """
@@ -160,17 +165,24 @@ def _backfill_gzira_distances(conn: sqlite3.Connection) -> int:
 
     updated = 0
     for row in cursor.fetchall():
-        km = distance_to_gzira_km(row["locality"])
-        if km is None:
+        locality = row["locality"]
+        km = distance_to_gzira_km(locality)
+        sea = sea_proximity_for(locality)
+        if km is None and sea is None:
             continue
         cursor.execute(
-            "UPDATE listings SET distance_to_gzira_km = ? WHERE id = ?",
-            (km, row["id"]),
+            """
+            UPDATE listings
+            SET distance_to_gzira_km = COALESCE(?, distance_to_gzira_km),
+                sea_proximity = COALESCE(?, sea_proximity)
+            WHERE id = ?
+            """,
+            (km, sea, row["id"]),
         )
         updated += 1
     if updated:
         conn.commit()
-        print(f"📍 Uzupełniono distance_to_gzira_km dla {updated} ofert.")
+        print(f"📍 Uzupełniono pola miejscowości dla {updated} ofert.")
     return updated
 
 
@@ -366,6 +378,10 @@ def save_listings_to_db(
         if distance_km is None:
             distance_km = distance_to_gzira_km(item.get("locality"))
 
+        sea_proximity = item.get("sea_proximity")
+        if not sea_proximity:
+            sea_proximity = sea_proximity_for(item.get("locality"))
+
         source = resolve_source(item.get("source"), url)
 
         cursor.execute("SELECT price_eur, title FROM listings WHERE url = ?", (url,))
@@ -387,6 +403,7 @@ def save_listings_to_db(
             item.get("scraped_at"),
             item.get("updated_at") or now,
             distance_km,
+            sea_proximity,
             url,
         )
 
@@ -397,8 +414,8 @@ def save_listings_to_db(
                     title, price_eur, locality, property_type,
                     bedrooms, seller_type, is_freehold, has_airspace,
                     has_sea_view, is_shell_form, key_features, source,
-                    scraped_at, updated_at, distance_to_gzira_km, url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    scraped_at, updated_at, distance_to_gzira_km, sea_proximity, url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 values,
             )
@@ -441,7 +458,8 @@ def save_listings_to_db(
                     source = COALESCE(?, NULLIF(TRIM(source), '')),
                     scraped_at = COALESCE(?, scraped_at),
                     updated_at = ?,
-                    distance_to_gzira_km = COALESCE(?, distance_to_gzira_km)
+                    distance_to_gzira_km = COALESCE(?, distance_to_gzira_km),
+                    sea_proximity = COALESCE(?, sea_proximity)
                 WHERE url = ?
                 """,
                 values,

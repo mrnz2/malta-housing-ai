@@ -7,6 +7,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from malta_housing.distances import SeaProximity
+
 SellerType = Literal["OWNER", "AGENT", "SENSAR", "UNKNOWN"]
 SourceType = Literal[
     "maltapark", "ownersbest", "djar", "propertymarket", "yitaku", "remax", "simonmamo"
@@ -100,4 +102,8 @@ class ParsedListing(MaltaPropertySchema):
     distance_to_gzira_km: Optional[float] = Field(
         default=None,
         description="Szacowana odległość (km) do Gżiry z to_gzira.csv — uzupełniane poza LLM",
+    )
+    sea_proximity: Optional[SeaProximity] = Field(
+        default=None,
+        description="Bliskość morza z to_gzira.csv — uzupełniane poza LLM",
     )

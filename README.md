@@ -1,6 +1,6 @@
 # Malta Housing AI
 
-An automated pipeline for scraping, processing, analyzing, and storing real estate listings in Malta. It uses a modular Python package combined with a local Large Language Model (**Qwen 2.5 7B** via **Ollama**) for unstructured data extraction and investment scoring, storing structured results in a SQLite database.
+An automated pipeline for scraping, processing, analyzing, and storing real estate listings in Malta. It uses a modular Python package combined with a local Large Language Model (**Qwen 2.5 7B** via **Ollama**) for unstructured data extraction, plus a **hybrid investment scorer** (deterministic Python rubric + LLM qualitative adjustment), storing structured results in a SQLite database.
 
 > **For AI assistants / new chats:** start with [`AGENTS.md`](AGENTS.md) (also loaded via `.cursor/rules/`).
 
@@ -45,8 +45,9 @@ An automated pipeline for scraping, processing, analyzing, and storing real esta
              │
              ▼
 ┌─────────────────────────┐
-│  analysis/              │ -> evaluator.py (Ollama investment score)
-│  (optional)             │ -> ranker.py (batch evaluate + console report)
+│  analysis/              │ -> scoring.py (deterministic base 0–8)
+│  (optional)             │ -> evaluator.py (LLM adjustment + pros/cons)
+│                         │ -> ranker.py (batch evaluate + console report)
 └────────────┬────────────┘
              │ ai_score synced to listings + evaluations table
              ▼
@@ -70,7 +71,7 @@ malta-housing-ai/
 │   ├── paths.py             # data/ paths relative to project root
 │   ├── common.py            # HTTP client, staging I/O, HTML helpers
 │   ├── budget.py            # €100k–€400k band helpers
-│   ├── distances.py         # locality → km to Gżira (to_gzira.csv)
+│   ├── distances.py         # locality profiles from to_gzira.csv (Gżira km, sea proximity)
 │   ├── geo.py               # Gozo detection / filtering
 │   ├── scrapers/
 │   │   ├── maltapark.py
@@ -82,7 +83,8 @@ malta-housing-ai/
 │   ├── parsing/
 │   │   └── llm.py
 │   ├── analysis/
-│   │   ├── evaluator.py     # Ollama investment evaluation per listing
+│   │   ├── scoring.py       # deterministic base score (price/m², Gżira, sea, area, flags)
+│   │   ├── evaluator.py     # hybrid: base score + LLM qualitative adjustment
 │   │   └── ranker.py        # batch rank CLI orchestration
 │   ├── db/
 │   │   ├── store.py         # UPSERT + price_history + evaluations
@@ -95,7 +97,7 @@ malta-housing-ai/
 ├── run_all.ps1              # Windows: all scrapers → parse → db
 ├── run_pipeline.py          # thin wrapper → malta_housing.cli
 ├── scraper_propertymarket.py  # thin launcher for Property Market
-├── to_gzira.csv             # locality distance lookup
+├── to_gzira.csv             # locality → km to Gżira + sea proximity (nad morzem / blisko / daleko)
 ├── requirements.txt
 ├── setup.ps1
 └── README.md
@@ -105,11 +107,13 @@ malta-housing-ai/
 * `malta_housing/common.py`: Shared HTTP client (session + retry on 429/5xx; optional `curl_cffi` TLS impersonation; SiteGround PoW auto-solve), staging merge I/O, HTML text helpers.
 * `malta_housing/scrapers/*.py`: Portal scrapers (`maltapark`, `ownersbest`, `djar`, `propertymarket`, `yitaku`, `remax`, `simonmamo`).
 * `malta_housing/parsing/llm.py`: Ollama extraction with checkpoints; skips URLs already in DB (unless `--force`).
-* `malta_housing/analysis/evaluator.py`: Ollama investment scoring (`investment_score` 0–10, pros, cons, summary) with pre-computed Python metrics (price/m², distance to Gżira, flags).
-* `malta_housing/analysis/ranker.py`: Fetches DB candidates, evaluates unevaluated listings, prints ranked console report.
+* `malta_housing/distances.py`: Locality profiles from `to_gzira.csv` — km to Gżira, sea proximity (`nad_morzem` / `blisko` / `daleko`), region.
+* `malta_housing/analysis/scoring.py`: Deterministic **base score** (0–8) from price/m², distance to Gżira, sea proximity, area, and structural flags (freehold, airspace, shell, seller).
+* `malta_housing/analysis/evaluator.py`: **Hybrid** investment scoring — Python base score + Ollama **qualitative adjustment** (−2 … +2) for text risks/opportunities; returns `investment_score` (0–10), `base_score`, `qualitative_adjustment`, `score_breakdown`, pros, cons, summary, metrics.
+* `malta_housing/analysis/ranker.py`: Fetches DB candidates, evaluates unevaluated listings, prints ranked console report with score breakdown.
 * `malta_housing/db/store.py`: UPSERTs into `data/malta_properties.db`; logs price changes in `price_history`; persists AI evaluations.
 * `malta_housing/db/queries.py`: Read API for the browser (filtering, sorting by `ai_score`, stats).
-* `malta_housing/web/`: Local browser UI — filter/search listings, AI score column, sort by score, detail view with pros/cons.
+* `malta_housing/web/`: Local browser UI — filter/search listings, AI score column, sea proximity, sort by score, detail view with base/LLM breakdown, pros/cons.
 * `setup.ps1`: Windows PowerShell install (venv + pinned deps + `init-db` only).
 * `run_all.ps1`: Windows PowerShell — all scrapers in sequence, then parse, then db.
 
@@ -149,7 +153,8 @@ malta-housing-ai/
 | `scraped_at` | `str \| null` | ISO timestamp from scrape |
 | `updated_at` | `str \| null` | ISO timestamp of last parse/DB write |
 | `distance_to_gzira_km` | `float \| null` | Estimated km to Gżira from `to_gzira.csv` |
-| `ai_score` | `float \| null` | Investment score 0–10 (denormalized from evaluations) |
+| `sea_proximity` | `nad_morzem \| blisko \| daleko \| null` | Sea distance category from `to_gzira.csv` |
+| `ai_score` | `float \| null` | Final investment score 0–10 (denormalized from evaluations) |
 | `ai_summary` | `str \| null` | Two-sentence executive summary |
 | `ai_evaluated_at` | `str \| null` | ISO timestamp of last AI evaluation |
 
@@ -157,7 +162,7 @@ malta-housing-ai/
 
 | Table | Purpose |
 | --- | --- |
-| `listings` | Unique `url`; property fields + `ai_score`, `ai_summary`, `ai_evaluated_at` |
+| `listings` | Unique `url`; property fields + `distance_to_gzira_km`, `sea_proximity`, `ai_score`, `ai_summary`, `ai_evaluated_at` |
 | `price_history` | `url`, `price_eur`, `recorded_at` — written on insert and whenever `price_eur` changes |
 | `evaluations` | Full AI result per URL: `ai_score`, `ai_summary`, `pros`, `cons`, `evaluation_json`, `evaluated_at` |
 
@@ -241,11 +246,12 @@ Listings outside the €100k–€400k band can be purged:
 python -m malta_housing purge-budget
 ```
 
-### AI investment ranking
+### AI investment ranking (hybrid)
 
 Evaluate listings already in the database (requires `raw_text` in `scraped_listings.json` for each URL):
 
 ```bash
+python -m malta_housing init-db    # backfill sea_proximity from to_gzira.csv
 python -m malta_housing rank --top 10 --max-price 300000
 python -m malta_housing rank --top 10 --max-price 300000 --force   # re-evaluate cached
 ```
@@ -254,19 +260,45 @@ The command:
 
 1. Loads candidate listings from SQLite (optionally capped by `--max-price`)
 2. Skips URLs already evaluated (unless `--force`)
-3. Sends listing metadata + `raw_text` to Ollama (`qwen2.5:7b`)
-4. Stores results in `evaluations` and syncs `ai_score` / `ai_summary` onto `listings`
-5. Prints a ranked console report
+3. Computes a **deterministic base score** (0–8) in Python from price/m², Gżira distance, sea proximity, area, and flags
+4. Sends listing metadata + `raw_text` to Ollama for a **qualitative adjustment** (−2 … +2) and pros/cons/summary
+5. Stores results in `evaluations` and syncs `ai_score` / `ai_summary` onto `listings`
+6. Prints a ranked console report with base + LLM breakdown
+
+**Scoring model:**
+
+| Layer | Range | What it measures |
+| --- | --- | --- |
+| Base score (Python) | 0–8 | `price_per_sqm`, `distance_to_gzira_km`, `sea_proximity`, `area_sqm`, freehold/airspace/shell/OWNER |
+| LLM adjustment (Ollama) | −2 … +2 | Text risks: emphyteusis, leasehold, dampness, no lift, hidden costs, renovation upside |
+| **Final** | 0–10 | `clamp(base_score + qualitative_adjustment, 0, 10)` |
+
+Tune thresholds in `malta_housing/analysis/scoring.py`. After changing the rubric, run `rank --force` to refresh cached scores.
 
 **Evaluation JSON shape:**
 
 ```json
 {
-  "investment_score": 7.5,
-  "pros": ["Freehold", "Close to Gżira"],
-  "cons": ["Shell form", "No lift"],
+  "investment_score": 7.2,
+  "base_score": 6.5,
+  "qualitative_adjustment": 0.7,
+  "score_breakdown": {
+    "price_per_sqm": 2.0,
+    "distance_to_gzira": 1.6,
+    "sea_proximity": 1.5,
+    "area_sqm": 1.0,
+    "structured_flags": 0.4
+  },
+  "pros": ["Recent renovation", "Strong rental area"],
+  "cons": ["Ground rent mentioned", "No lift"],
   "summary": "Two-sentence executive summary in English.",
-  "metrics": { "price_eur": 285000, "distance_to_gzira_km": 1.2, "price_per_sqm": 3200 }
+  "metrics": {
+    "price_eur": 285000,
+    "distance_to_gzira_km": 1.2,
+    "sea_proximity": "nad_morzem",
+    "area_sqm": 95,
+    "price_per_sqm": 3000
+  }
 }
 ```
 
@@ -281,8 +313,9 @@ Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Optional: `--host 0.0.0.0 -
 The browser shows:
 
 * **Score** column per listing (`ai_score` / 10, or `—` if not evaluated)
+* **Sea** column — proximity category from `to_gzira.csv` (nad morzem / blisko / daleko)
 * Default sort: **AI score ↓** (click the Score header to toggle direction)
-* Detail panel: investment summary, pros, cons, price history
+* Detail panel: final score with base + LLM breakdown, component scores, summary, pros, cons, price history
 * Header stats: total listings, average price, scored count, average score
 
 No extra dependencies — stdlib HTTP server + static HTML/JS reading `data/malta_properties.db`.
@@ -311,7 +344,7 @@ ORDER BY ai_score DESC;
 | `parse [--force]` | Parse staging with Ollama |
 | `db` | UPSERT parsed JSON into SQLite |
 | `run --source <portal> --pages N [--force] [--skip-rank]` | scrape → parse → db → rank |
-| `rank --top N [--max-price EUR] [--force]` | AI investment ranking |
+| `rank --top N [--max-price EUR] [--force]` | Hybrid AI investment ranking (Python base + Ollama adjustment) |
 | `serve [--host HOST] [--port PORT]` | Local listings browser |
 | `purge-gozo` | Remove Gozo listings from DB + JSON |
 | `purge-budget` | Remove listings outside €100k–€400k |

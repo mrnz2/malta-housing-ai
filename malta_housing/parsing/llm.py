@@ -19,7 +19,7 @@ from malta_housing.common import (
     save_json_list,
 )
 from malta_housing.db.store import get_known_urls
-from malta_housing.distances import distance_to_gzira_km
+from malta_housing.distances import distance_to_gzira_km, sea_proximity_for
 from malta_housing.geo import is_gozo_record
 from malta_housing.models import MaltaPropertySchema, ParsedListing, utc_now_iso
 
@@ -108,14 +108,23 @@ def run_parser(
         for item in load_json_list(PARSED_PATH)
         if "url" in item and not is_gozo_record(item) and not is_out_of_budget(item)
     }
-    # Backfill distance on checkpoint rows that predate this field
+    # Backfill locality fields on checkpoint rows that predate these fields
     for url, item in list(already_parsed.items()):
-        if item.get("distance_to_gzira_km") is None and item.get("locality"):
-            km = distance_to_gzira_km(item.get("locality"))
+        locality = item.get("locality")
+        changed = False
+        item = dict(item)
+        if item.get("distance_to_gzira_km") is None and locality:
+            km = distance_to_gzira_km(locality)
             if km is not None:
-                item = dict(item)
                 item["distance_to_gzira_km"] = km
-                already_parsed[url] = item
+                changed = True
+        if not item.get("sea_proximity") and locality:
+            sea = sea_proximity_for(locality)
+            if sea is not None:
+                item["sea_proximity"] = sea
+                changed = True
+        if changed:
+            already_parsed[url] = item
     known_db_urls = set() if force else get_known_urls()
 
     to_process: list[dict[str, Any]] = []
@@ -158,6 +167,7 @@ def run_parser(
                 scraped_at=item.get("scraped_at"),
                 updated_at=utc_now_iso(),
                 distance_to_gzira_km=distance_to_gzira_km(parsed_data.locality),
+                sea_proximity=sea_proximity_for(parsed_data.locality),
             )
             result_dict = result.model_dump()
             if is_gozo_record(result_dict):
@@ -172,11 +182,13 @@ def run_parser(
             success += 1
             dist = result_dict.get("distance_to_gzira_km")
             dist_txt = f", →Gżira: {dist} km" if dist is not None else ""
+            sea = result_dict.get("sea_proximity")
+            sea_txt = f", morze: {sea}" if sea else ""
             print(
                 f"   └─ Sukces! Cena: €{parsed_data.price_eur}, "
                 f"Sprzedawca: {parsed_data.seller_type}, "
                 f"Freehold: {parsed_data.is_freehold}, Airspace: {parsed_data.has_airspace}"
-                f"{dist_txt}"
+                f"{dist_txt}{sea_txt}"
             )
         except Exception as e:
             failures += 1

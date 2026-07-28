@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from malta_housing.analysis.evaluator import evaluate_listing
@@ -10,6 +11,12 @@ from malta_housing.db.store import get_evaluated_urls, init_db, save_evaluation
 from malta_housing.db.queries import get_rank_candidates
 from malta_housing.models import ParsedListing
 from malta_housing.paths import DB_PATH
+
+_SEA_LABELS = {
+    "nad_morzem": "nad morzem",
+    "blisko": "blisko",
+    "daleko": "daleko",
+}
 
 
 def _load_raw_text_by_url() -> dict[str, str]:
@@ -39,6 +46,7 @@ def _listing_to_parsed(row: dict[str, Any]) -> ParsedListing:
         "scraped_at",
         "updated_at",
         "distance_to_gzira_km",
+        "sea_proximity",
     }
     return ParsedListing(**{k: row[k] for k in fields if k in row})
 
@@ -47,6 +55,45 @@ def _format_price(price: int | None) -> str:
     if price is None:
         return "€—"
     return f"€{price:,}"
+
+
+def _format_sea_proximity(value: str | None) -> str:
+    if not value:
+        return "—"
+    return _SEA_LABELS.get(value, str(value).replace("_", " "))
+
+
+def _format_adjustment(value: float | int | None) -> str:
+    if value is None:
+        return "—"
+    n = float(value)
+    sign = "+" if n > 0 else ""
+    return f"{sign}{n:g}"
+
+
+def _score_line(row: dict[str, Any]) -> str:
+    score = row.get("ai_score", row.get("investment_score", "?"))
+    base = row.get("base_score")
+    adj = row.get("qualitative_adjustment")
+    if base is not None and adj is not None:
+        return f"SCORE {score}/10 (base {base:g} + LLM {_format_adjustment(adj)})"
+    return f"SCORE {score}/10"
+
+
+def _breakdown_line(row: dict[str, Any]) -> str | None:
+    breakdown = row.get("score_breakdown")
+    if not isinstance(breakdown, dict) or not breakdown:
+        payload = row.get("evaluation_json")
+        if isinstance(payload, str) and payload.strip():
+            try:
+                data = json.loads(payload)
+                breakdown = data.get("score_breakdown")
+            except json.JSONDecodeError:
+                breakdown = None
+    if not isinstance(breakdown, dict) or not breakdown:
+        return None
+    parts = [f"{key}: {value:g}" for key, value in breakdown.items()]
+    return "Breakdown: " + ", ".join(parts)
 
 
 def _print_report(ranked: list[dict[str, Any]], *, top: int, max_price: int | None) -> None:
@@ -61,7 +108,6 @@ def _print_report(ranked: list[dict[str, Any]], *, top: int, max_price: int | No
         return
 
     for idx, row in enumerate(ranked[:top], 1):
-        score = row.get("ai_score", row.get("investment_score", "?"))
         title = row.get("title") or "Untitled"
         locality = row.get("locality") or "—"
         prop_type = row.get("property_type") or "—"
@@ -69,6 +115,17 @@ def _print_report(ranked: list[dict[str, Any]], *, top: int, max_price: int | No
         bed_txt = f"{bedrooms}-bed " if bedrooms is not None else ""
         dist = row.get("distance_to_gzira_km")
         dist_txt = f"→ Gżira: {dist} km" if dist is not None else "→ Gżira: —"
+        sea_txt = f"Morze: {_format_sea_proximity(row.get('sea_proximity'))}"
+
+        metrics = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
+        price_per_sqm = metrics.get("price_per_sqm")
+        area_sqm = metrics.get("area_sqm")
+        size_bits: list[str] = []
+        if area_sqm is not None:
+            size_bits.append(f"{area_sqm} m²")
+        if price_per_sqm is not None:
+            size_bits.append(f"€{price_per_sqm:,.0f}/m²")
+        size_txt = " | ".join(size_bits) if size_bits else "—"
 
         flags: list[str] = []
         if row.get("is_freehold"):
@@ -86,11 +143,15 @@ def _print_report(ranked: list[dict[str, Any]], *, top: int, max_price: int | No
         pros = row.get("pros") or []
         cons = row.get("cons") or []
         summary = row.get("ai_summary") or row.get("summary") or ""
+        breakdown_txt = _breakdown_line(row)
 
         print()
-        print(f" #{idx:<2} SCORE {score}/10  {_format_price(row.get('price_eur'))}  "
+        print(f" #{idx:<2} {_score_line(row)}  {_format_price(row.get('price_eur'))}  "
               f"{locality}  {bed_txt}{prop_type}")
-        print(f"     {dist_txt}  |  {flags_txt}")
+        print(f"     {dist_txt}  |  {sea_txt}  |  {size_txt}")
+        print(f"     {flags_txt}")
+        if breakdown_txt:
+            print(f"     {breakdown_txt}")
         if pros:
             print(f"     Pros: {'; '.join(pros)}")
         if cons:
@@ -131,6 +192,8 @@ def run_rank(
         + (f" [{source}]" if source else "")
         + f", {len(to_evaluate)} to evaluate, {skipped} cached."
     )
+    if skipped and not force:
+        print("   Tip: use --force to re-score with the hybrid rubric.")
 
     evaluated_ok = 0
     evaluated_fail = 0
@@ -148,7 +211,10 @@ def run_rank(
             result = evaluate_listing(listing, raw_text)
             save_evaluation(url, result, db_name=db_name)
             evaluated_ok += 1
-            print(f"   └─ Score: {result['investment_score']}/10")
+            print(
+                f"   └─ Score: {result['investment_score']}/10 "
+                f"(base {result['base_score']} + LLM {_format_adjustment(result['qualitative_adjustment'])})"
+            )
         except Exception as exc:
             evaluated_fail += 1
             print(f"   └─ Error: {exc}")

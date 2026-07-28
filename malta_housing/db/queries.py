@@ -44,7 +44,7 @@ _LISTING_COLUMNS = """
     seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form,
     key_features, source, scraped_at, created_at, updated_at,
     distance_to_gzira_km, is_hidden, notes,
-    ai_score, ai_summary, ai_evaluated_at
+    ai_score, ai_summary, ai_evaluated_at, sea_proximity
 """
 
 _LISTING_COLUMNS_QUALIFIED = """
@@ -53,7 +53,7 @@ _LISTING_COLUMNS_QUALIFIED = """
     listings.has_airspace, listings.has_sea_view, listings.is_shell_form,
     listings.key_features, listings.source, listings.scraped_at, listings.created_at,
     listings.updated_at, listings.distance_to_gzira_km, listings.is_hidden, listings.notes,
-    listings.ai_score, listings.ai_summary, listings.ai_evaluated_at
+    listings.ai_score, listings.ai_summary, listings.ai_evaluated_at, listings.sea_proximity
 """
 
 
@@ -341,6 +341,23 @@ def _enrich_with_evaluation(row: dict[str, Any]) -> dict[str, Any]:
             row["cons"] = json.loads(cons)
         except json.JSONDecodeError:
             row["cons"] = []
+
+    payload = row.get("evaluation_json")
+    if isinstance(payload, str) and payload.strip():
+        try:
+            evaluation = json.loads(payload)
+        except json.JSONDecodeError:
+            evaluation = None
+        if isinstance(evaluation, dict):
+            for key in (
+                "base_score",
+                "qualitative_adjustment",
+                "score_breakdown",
+                "metrics",
+            ):
+                if key in evaluation and key not in row:
+                    row[key] = evaluation[key]
+    row.pop("evaluation_json", None)
     return row
 
 

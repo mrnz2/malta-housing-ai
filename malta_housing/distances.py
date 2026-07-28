@@ -1,4 +1,4 @@
-"""Estimated road distance from localities to Gżira (from to_gzira.csv)."""
+"""Locality profiles from to_gzira.csv (Gżira distance, sea proximity, region)."""
 
 from __future__ import annotations
 
@@ -6,11 +6,21 @@ import csv
 import re
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal, TypedDict
 
 from malta_housing.geo import _normalize
 from malta_housing.paths import PROJECT_ROOT
 
 GZIRA_CSV_PATH = PROJECT_ROOT / "to_gzira.csv"
+
+SeaProximity = Literal["nad_morzem", "blisko", "daleko"]
+
+
+class LocalityProfile(TypedDict):
+    gzira_km: float
+    sea_proximity: SeaProximity | None
+    region: str | None
+
 
 # Common scraper/LLM locality spellings → CSV town keys (normalized).
 _ALIASES: dict[str, str] = {
@@ -67,6 +77,19 @@ def _parse_km(value: str) -> float | None:
         return None
 
 
+def _normalize_sea_proximity(value: str | None) -> SeaProximity | None:
+    if not value or not str(value).strip():
+        return None
+    text = _normalize(str(value).replace("_", " "))
+    if text in {"nad morzem", "seafront", "on sea", "at sea"}:
+        return "nad_morzem"
+    if text in {"blisko", "close", "near sea", "near the sea"}:
+        return "blisko"
+    if text in {"daleko", "far", "inland"}:
+        return "daleko"
+    return None
+
+
 def _csv_key_variants(name: str) -> set[str]:
     """Build lookup keys from a CSV locality cell (incl. parenthetical aliases)."""
     keys: set[str] = set()
@@ -75,7 +98,6 @@ def _csv_key_variants(name: str) -> set[str]:
         return keys
     keys.add(_normalize(raw))
 
-    # "San Pawl il-Baħar (St. Paul's Bay)" → both sides
     if "(" in raw and ")" in raw:
         before = raw.split("(", 1)[0].strip()
         inside = raw[raw.find("(") + 1 : raw.rfind(")")].strip()
@@ -84,7 +106,6 @@ def _csv_key_variants(name: str) -> set[str]:
         if inside:
             keys.add(_normalize(inside))
 
-    # Drop trailing region qualifiers already handled; also bare ascii forms
     for key in list(keys):
         if key in _ALIASES:
             keys.add(_ALIASES[key])
@@ -92,10 +113,10 @@ def _csv_key_variants(name: str) -> set[str]:
 
 
 @lru_cache(maxsize=1)
-def load_gzira_distances(csv_path: str | None = None) -> dict[str, float]:
-    """Map normalized locality name → distance km to Gżira."""
+def load_locality_profiles(csv_path: str | None = None) -> dict[str, LocalityProfile]:
+    """Map normalized locality name → profile from to_gzira.csv."""
     path = Path(csv_path) if csv_path else GZIRA_CSV_PATH
-    mapping: dict[str, float] = {}
+    mapping: dict[str, LocalityProfile] = {}
     if not path.exists():
         print(f"⚠️ Brak pliku odległości: {path}")
         return mapping
@@ -110,12 +131,30 @@ def load_gzira_distances(csv_path: str | None = None) -> dict[str, float]:
                 or row.get("distance_km")
                 or ""
             ).strip()
+            sea_raw = (
+                row.get("Dystans do morza")
+                or row.get("Odleglosc do morza")
+                or row.get("sea_proximity")
+                or ""
+            ).strip()
+            region = (row.get("Region") or row.get("region") or "").strip() or None
             km = _parse_km(distance_raw)
             if not locality or km is None:
                 continue
+            profile: LocalityProfile = {
+                "gzira_km": km,
+                "sea_proximity": _normalize_sea_proximity(sea_raw),
+                "region": region,
+            }
             for key in _csv_key_variants(locality):
-                mapping[key] = km
+                mapping[key] = profile
     return mapping
+
+
+@lru_cache(maxsize=1)
+def load_gzira_distances(csv_path: str | None = None) -> dict[str, float]:
+    """Map normalized locality name → distance km to Gżira."""
+    return {key: profile["gzira_km"] for key, profile in load_locality_profiles(csv_path).items()}
 
 
 def _candidate_tokens(locality: str) -> list[str]:
@@ -125,7 +164,6 @@ def _candidate_tokens(locality: str) -> list[str]:
         return []
 
     parts: list[str] = [text]
-    # "Birkirkara, Swatar Area" / "Gillieru, St Pauls Bay"
     parts.extend(p.strip() for p in re.split(r"[,/|]", text) if p.strip())
 
     candidates: list[str] = []
@@ -136,14 +174,12 @@ def _candidate_tokens(locality: str) -> list[str]:
         candidates.append(norm)
         if norm in _ALIASES:
             candidates.append(_ALIASES[norm])
-        # Strip trailing " malta" / " area"
         for suffix in (" malta", " area", " bay"):
             if norm.endswith(suffix) and len(norm) > len(suffix) + 2:
                 trimmed = norm[: -len(suffix)].strip()
                 candidates.append(trimmed)
                 if trimmed in _ALIASES:
                     candidates.append(_ALIASES[trimmed])
-        # Parenthetical already in part
         if "(" in part:
             before = _normalize(part.split("(", 1)[0])
             if before:
@@ -151,7 +187,6 @@ def _candidate_tokens(locality: str) -> list[str]:
                 if before in _ALIASES:
                     candidates.append(_ALIASES[before])
 
-    # Preserve order, unique
     seen: set[str] = set()
     ordered: list[str] = []
     for c in candidates:
@@ -161,11 +196,13 @@ def _candidate_tokens(locality: str) -> list[str]:
     return ordered
 
 
-def distance_to_gzira_km(locality: str | None, csv_path: str | None = None) -> float | None:
-    """Return estimated km to Gżira for a locality, or None if unknown."""
+def _lookup_profile(
+    locality: str | None,
+    csv_path: str | None = None,
+) -> LocalityProfile | None:
     if not locality or not str(locality).strip():
         return None
-    mapping = load_gzira_distances(csv_path)
+    mapping = load_locality_profiles(csv_path)
     if not mapping:
         return None
 
@@ -173,9 +210,31 @@ def distance_to_gzira_km(locality: str | None, csv_path: str | None = None) -> f
         if candidate in mapping:
             return mapping[candidate]
 
-    # Soft contains: e.g. locality "Central Sliema" → sliema
     joined = _normalize(str(locality))
-    for key, km in mapping.items():
+    for key, profile in mapping.items():
         if len(key) >= 4 and (key in joined or joined in key):
-            return km
+            return profile
     return None
+
+
+def locality_profile_for(
+    locality: str | None,
+    csv_path: str | None = None,
+) -> LocalityProfile | None:
+    """Return full locality profile (Gżira km, sea proximity, region)."""
+    return _lookup_profile(locality, csv_path)
+
+
+def distance_to_gzira_km(locality: str | None, csv_path: str | None = None) -> float | None:
+    """Return estimated km to Gżira for a locality, or None if unknown."""
+    profile = _lookup_profile(locality, csv_path)
+    return profile["gzira_km"] if profile else None
+
+
+def sea_proximity_for(
+    locality: str | None,
+    csv_path: str | None = None,
+) -> SeaProximity | None:
+    """Return sea proximity category for a locality, or None if unknown."""
+    profile = _lookup_profile(locality, csv_path)
+    return profile["sea_proximity"] if profile else None

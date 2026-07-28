@@ -1,4 +1,4 @@
-"""LLM investment evaluator using local Ollama (qwen2.5:7b)."""
+"""Hybrid investment evaluator: deterministic base score + LLM qualitative adjustment."""
 
 from __future__ import annotations
 
@@ -8,12 +8,16 @@ from typing import Any
 
 import ollama
 
+from malta_housing.analysis.scoring import compute_base_score
+from malta_housing.distances import sea_proximity_for
 from malta_housing.models import ParsedListing
 from malta_housing.parsing.llm import clean_raw_text
 
 MODEL_NAME = "qwen2.5:7b"
 LLM_RETRIES = 3
 OLLAMA_TIMEOUT_S = 120.0
+LLM_ADJUSTMENT_MIN = -2.0
+LLM_ADJUSTMENT_MAX = 2.0
 
 _CLIENT = ollama.Client(timeout=OLLAMA_TIMEOUT_S)
 
@@ -47,6 +51,8 @@ def _compute_metrics(listing: ParsedListing, raw_text: str) -> dict[str, Any]:
     if price is not None and area_sqm:
         price_per_sqm = round(price / area_sqm, 2)
 
+    sea_proximity = listing.sea_proximity or sea_proximity_for(listing.locality)
+
     return {
         "price_eur": price,
         "locality": listing.locality,
@@ -54,6 +60,7 @@ def _compute_metrics(listing: ParsedListing, raw_text: str) -> dict[str, Any]:
         "bedrooms": listing.bedrooms,
         "seller_type": listing.seller_type,
         "distance_to_gzira_km": listing.distance_to_gzira_km,
+        "sea_proximity": sea_proximity,
         "area_sqm": area_sqm,
         "price_per_sqm": price_per_sqm,
         "is_freehold": listing.is_freehold,
@@ -64,20 +71,33 @@ def _compute_metrics(listing: ParsedListing, raw_text: str) -> dict[str, Any]:
     }
 
 
-def _build_prompt(listing: ParsedListing, raw_text: str, metrics: dict[str, Any]) -> str:
+def _build_prompt(
+    listing: ParsedListing,
+    raw_text: str,
+    metrics: dict[str, Any],
+    *,
+    base_score: float,
+    score_breakdown: dict[str, float],
+) -> str:
     cleaned = clean_raw_text(raw_text)
     metrics_json = json.dumps(metrics, ensure_ascii=False, indent=2)
+    breakdown_json = json.dumps(score_breakdown, ensure_ascii=False, indent=2)
 
     return f"""
-You are a Malta real-estate investment analyst. Evaluate this listing for buy-to-let /
-long-term hold potential on mainland Malta (not Gozo).
+You are a Malta real-estate investment analyst. A Python rubric has already scored
+quantitative factors (price/m², Gżira distance, sea proximity, area, structural flags).
+Your job is ONLY to adjust for qualitative risks and opportunities found in the listing text.
 
-Use the pre-calculated Python metrics below together with the raw listing text.
-Be skeptical: flag shell form, emphyteusis/ground rent, missing lift, noise, dampness,
-leasehold, agent fees, and unrealistic pricing.
+Do NOT re-score price, location, or sea proximity — those are already in base_score.
 
 PRE-CALCULATED METRICS (Python):
 {metrics_json}
+
+BASE SCORE (already computed, max 8.0):
+{base_score}
+
+SCORE BREAKDOWN (do not repeat these factors in pros/cons unless adding new detail):
+{breakdown_json}
 
 STRUCTURED LISTING:
 - Title: {listing.title}
@@ -91,16 +111,20 @@ RAW LISTING TEXT:
 
 Return ONLY valid JSON with this exact shape:
 {{
-  "investment_score": 7.5,
+  "qualitative_adjustment": 0.5,
   "pros": ["advantage 1", "advantage 2"],
   "cons": ["risk 1", "risk 2"],
   "summary": "Two concise sentences in English summarizing the investment case."
 }}
 
 Rules:
-- investment_score: number from 0 (worst) to 10 (exceptional deal).
-- pros: at most 3 short strings.
-- cons: at most 3 short strings (risks/disadvantages).
+- qualitative_adjustment: number from {LLM_ADJUSTMENT_MIN} to {LLM_ADJUSTMENT_MAX}.
+  Use negative values for emphyteusis, ground rent, leasehold, shell finish issues,
+  missing lift, noise, dampness, agent fees, unrealistic claims, renovation risk.
+  Use positive values for exceptional layout, recent renovation, strong rental demand
+  signals, or other upside not captured in base_score.
+- pros: at most 3 short strings (qualitative only, not repeating base_score factors).
+- cons: at most 3 short strings (risks/disadvantages from the text).
 - summary: exactly two sentences in English.
 """
 
@@ -120,32 +144,59 @@ def _normalize_str_list(value: Any, *, max_items: int = 3) -> list[str]:
     return items
 
 
-def _validate_evaluation(data: dict[str, Any]) -> dict[str, Any]:
-    if "investment_score" not in data:
-        raise ValueError("missing investment_score")
+def _clamp_adjustment(value: float) -> float:
+    return max(LLM_ADJUSTMENT_MIN, min(LLM_ADJUSTMENT_MAX, round(value, 2)))
 
-    try:
-        score = float(data["investment_score"])
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"invalid investment_score: {data['investment_score']!r}") from exc
 
-    score = max(0.0, min(10.0, score))
+def _clamp_score(value: float) -> float:
+    score = max(0.0, min(10.0, round(value, 2)))
     if score == int(score):
-        score = int(score)
+        return float(int(score))
+    return score
+
+
+def _validate_evaluation(
+    data: dict[str, Any],
+    *,
+    base_score: float,
+) -> dict[str, Any]:
+    adjustment: float | None = None
+
+    if "qualitative_adjustment" in data:
+        try:
+            adjustment = _clamp_adjustment(float(data["qualitative_adjustment"]))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"invalid qualitative_adjustment: {data['qualitative_adjustment']!r}"
+            ) from exc
+    elif "investment_score" in data:
+        try:
+            llm_score = float(data["investment_score"])
+            adjustment = _clamp_adjustment(llm_score - base_score)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"invalid investment_score fallback: {data['investment_score']!r}"
+            ) from exc
+    else:
+        raise ValueError("missing qualitative_adjustment")
 
     summary = str(data.get("summary", "")).strip()
     if not summary:
         raise ValueError("missing summary")
 
+    investment_score = _clamp_score(base_score + adjustment)
+
     return {
-        "investment_score": score,
+        "investment_score": investment_score,
+        "base_score": round(base_score, 2),
+        "qualitative_adjustment": adjustment,
         "pros": _normalize_str_list(data.get("pros")),
         "cons": _normalize_str_list(data.get("cons")),
         "summary": summary,
     }
 
 
-def _call_ollama(prompt: str) -> dict[str, Any]:
+def _call_ollama(prompt: str, *, base_score: float) -> dict[str, Any]:
     last_error: Exception | None = None
     for attempt in range(1, LLM_RETRIES + 1):
         try:
@@ -158,7 +209,7 @@ def _call_ollama(prompt: str) -> dict[str, Any]:
             parsed = json.loads(content)
             if not isinstance(parsed, dict):
                 raise ValueError(f"expected JSON object, got {type(parsed).__name__}")
-            return _validate_evaluation(parsed)
+            return _validate_evaluation(parsed, base_score=base_score)
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             last_error = exc
             print(f"   └─ Evaluation attempt {attempt}/{LLM_RETRIES} failed: {exc}")
@@ -173,12 +224,23 @@ def _call_ollama(prompt: str) -> dict[str, Any]:
 
 
 def evaluate_listing(listing: ParsedListing, raw_text: str) -> dict[str, Any]:
-    """Score a parsed listing for investment potential via local Ollama."""
+    """Score a parsed listing via deterministic base + LLM qualitative adjustment."""
     if not raw_text or not raw_text.strip():
         raise ValueError("raw_text is required for evaluation")
 
     metrics = _compute_metrics(listing, raw_text)
-    prompt = _build_prompt(listing, raw_text, metrics)
-    result = _call_ollama(prompt)
+    scoring = compute_base_score(metrics)
+    base_score = scoring["base_score"]
+    score_breakdown = scoring["components"]
+
+    prompt = _build_prompt(
+        listing,
+        raw_text,
+        metrics,
+        base_score=base_score,
+        score_breakdown=score_breakdown,
+    )
+    result = _call_ollama(prompt, base_score=base_score)
+    result["score_breakdown"] = score_breakdown
     result["metrics"] = metrics
     return result
