@@ -3,7 +3,7 @@ const PAGE_SIZE = 50;
 const state = {
   offset: 0,
   total: 0,
-  filters: {},
+  filters: { sort: "ai_score_desc" },
 };
 
 const els = {
@@ -16,6 +16,10 @@ const els = {
   next: document.getElementById("next-page"),
   statTotal: document.getElementById("stat-total"),
   statAvg: document.getElementById("stat-avg"),
+  statScored: document.getElementById("stat-scored"),
+  statAvgScore: document.getElementById("stat-avg-score"),
+  sortScore: document.getElementById("sort-score"),
+  sortSelect: document.getElementById("filter-sort"),
   locality: document.getElementById("filter-locality"),
   source: document.getElementById("filter-source"),
   seller: document.getElementById("filter-seller"),
@@ -78,10 +82,32 @@ async function loadStats() {
   const stats = await res.json();
   els.statTotal.textContent = String(stats.total ?? 0);
   els.statAvg.textContent = euro(stats.avg_price);
+  els.statScored.textContent = String(stats.with_score ?? 0);
+  els.statAvgScore.textContent =
+    stats.avg_ai_score != null ? formatScore(stats.avg_ai_score) : "—";
   fillSelect(els.locality, stats.localities || []);
   fillSelect(els.source, Object.keys(stats.sources || {}));
   fillSelect(els.seller, stats.seller_types || []);
   fillSelect(els.type, stats.property_types || []);
+}
+
+function syncSortHeader() {
+  const sort = state.filters.sort || "ai_score_desc";
+  const isScoreSort = sort === "ai_score_desc" || sort === "ai_score_asc";
+  if (!els.sortScore) return;
+  els.sortScore.classList.toggle("is-active", isScoreSort);
+  els.sortScore.dataset.direction = sort === "ai_score_asc" ? "asc" : "desc";
+  if (els.sortSelect && [...els.sortSelect.options].some((o) => o.value === sort)) {
+    els.sortSelect.value = sort;
+  }
+}
+
+function setScoreSort(direction) {
+  const sort = direction === "asc" ? "ai_score_asc" : "ai_score_desc";
+  state.filters = { ...state.filters, sort };
+  state.offset = 0;
+  syncSortHeader();
+  loadListings();
 }
 
 function flagsFor(item) {
@@ -136,8 +162,8 @@ function renderRows(items) {
       : `<td class="notes-cell"></td>`;
     const score = item.ai_score;
     const scoreCell = score == null
-      ? `<td class="score-cell">—</td>`
-      : `<td class="score-cell"><span class="score-badge ${scoreClass(score)}" title="${escapeHtml(item.ai_summary || "")}">${formatScore(score)}</span></td>`;
+      ? `<td class="score-cell"><span class="score-missing">—</span></td>`
+      : `<td class="score-cell"><span class="score-badge ${scoreClass(score)}" title="${escapeHtml(item.ai_summary || "")}">${formatScore(score)}<span class="score-denom">/10</span></span></td>`;
     tr.innerHTML = `
       <td>
         <div class="cell-title">${escapeHtml(item.title || "Untitled")}</div>
@@ -252,6 +278,7 @@ async function loadListings() {
   els.pageLabel.textContent = `Page ${page} / ${pages}`;
   els.prev.disabled = state.offset <= 0;
   els.next.disabled = state.offset + PAGE_SIZE >= state.total;
+  syncSortHeader();
 }
 
 async function openDetail(id) {
@@ -354,11 +381,19 @@ els.form.addEventListener("submit", (e) => {
 
 els.form.addEventListener("reset", () => {
   setTimeout(() => {
-    state.filters = {};
+    state.filters = { sort: "ai_score_desc" };
     state.offset = 0;
     loadListings();
   }, 0);
 });
+
+if (els.sortScore) {
+  els.sortScore.addEventListener("click", () => {
+    const current = state.filters.sort || "ai_score_desc";
+    const next = current === "ai_score_desc" ? "ai_score_asc" : "ai_score_desc";
+    setScoreSort(next === "ai_score_asc" ? "asc" : "desc");
+  });
+}
 
 els.prev.addEventListener("click", () => {
   state.offset = Math.max(0, state.offset - PAGE_SIZE);

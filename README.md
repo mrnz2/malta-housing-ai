@@ -1,6 +1,6 @@
 # Malta Housing AI
 
-An automated pipeline for scraping, processing, analyzing, and storing real estate listings in Malta. It uses a modular Python package combined with a local Large Language Model (**Qwen 2.5 7B** via **Ollama**) for unstructured data extraction, storing structured results in a SQLite database.
+An automated pipeline for scraping, processing, analyzing, and storing real estate listings in Malta. It uses a modular Python package combined with a local Large Language Model (**Qwen 2.5 7B** via **Ollama**) for unstructured data extraction and investment scoring, storing structured results in a SQLite database.
 
 > **For AI assistants / new chats:** start with [`AGENTS.md`](AGENTS.md) (also loaded via `.cursor/rules/`).
 
@@ -39,12 +39,23 @@ An automated pipeline for scraping, processing, analyzing, and storing real esta
 ┌─────────────────────────┐
 │  db/                    │ -> store.py
 │  (SQLite)               │    UPSERT listings + price_history on price change
-└─────────────────────────┘
+└────────────┬────────────┘
              ▼
    data/malta_properties.db
+             │
+             ▼
+┌─────────────────────────┐
+│  analysis/              │ -> evaluator.py (Ollama investment score)
+│  (optional)             │ -> ranker.py (batch evaluate + console report)
+└────────────┬────────────┘
+             │ ai_score synced to listings + evaluations table
+             ▼
+┌─────────────────────────┐
+│  web/                   │ -> local browser (scores, filters, sort)
+└─────────────────────────┘
 ```
 
-Orchestration: `python -m malta_housing` (`run` / `scrape` / `parse` / `db` / `init-db` / `serve` / `purge-gozo`).
+Orchestration: `python -m malta_housing` (`run` / `scrape` / `parse` / `db` / `rank` / `init-db` / `serve` / `purge-gozo` / `purge-budget`).
 
 Windows one-shot for **all** portals: `.\run_all.ps1` (scrape each source → parse → db).
 
@@ -58,6 +69,9 @@ malta-housing-ai/
 │   ├── models.py            # ScrapedListing, ParsedListing, …
 │   ├── paths.py             # data/ paths relative to project root
 │   ├── common.py            # HTTP client, staging I/O, HTML helpers
+│   ├── budget.py            # €100k–€400k band helpers
+│   ├── distances.py         # locality → km to Gżira (to_gzira.csv)
+│   ├── geo.py               # Gozo detection / filtering
 │   ├── scrapers/
 │   │   ├── maltapark.py
 │   │   ├── ownersbest.py
@@ -67,8 +81,11 @@ malta-housing-ai/
 │   │   └── remax.py
 │   ├── parsing/
 │   │   └── llm.py
+│   ├── analysis/
+│   │   ├── evaluator.py     # Ollama investment evaluation per listing
+│   │   └── ranker.py        # batch rank CLI orchestration
 │   ├── db/
-│   │   ├── store.py         # UPSERT + price_history
+│   │   ├── store.py         # UPSERT + price_history + evaluations
 │   │   └── queries.py       # read API for the browser
 │   └── web/
 │       ├── server.py        # local HTTP server (stdlib)
@@ -78,6 +95,7 @@ malta-housing-ai/
 ├── run_all.ps1              # Windows: all scrapers → parse → db
 ├── run_pipeline.py          # thin wrapper → malta_housing.cli
 ├── scraper_propertymarket.py  # thin launcher for Property Market
+├── to_gzira.csv             # locality distance lookup
 ├── requirements.txt
 ├── setup.ps1
 └── README.md
@@ -85,15 +103,13 @@ malta-housing-ai/
 
 * `malta_housing/models.py`: Shared Pydantic contracts (`ScrapedListing`, `MaltaPropertySchema`, `ParsedListing`).
 * `malta_housing/common.py`: Shared HTTP client (session + retry on 429/5xx; optional `curl_cffi` TLS impersonation; SiteGround PoW auto-solve), staging merge I/O, HTML text helpers.
-* `malta_housing/scrapers/maltapark.py`: Scrapes **MaltaPark** (`source=maltapark`).
-* `malta_housing/scrapers/ownersbest.py`: Scrapes **Owners Best** (`source=ownersbest`).
-* `malta_housing/scrapers/djar.py`: Scrapes **Djar.ai** (`source=djar`).
-* `malta_housing/scrapers/propertymarket.py`: Scrapes **Property Market Malta** (`source=propertymarket`).
-* `malta_housing/scrapers/yitaku.py`: Scrapes **Yitaku** JSON API (`source=yitaku`, €100k–€400k).
-* `malta_housing/scrapers/remax.py`: Scrapes **RE/MAX Malta** JSON API (`source=remax`, €100k–€400k).
+* `malta_housing/scrapers/*.py`: Portal scrapers (`maltapark`, `ownersbest`, `djar`, `propertymarket`, `yitaku`, `remax`).
 * `malta_housing/parsing/llm.py`: Ollama extraction with checkpoints; skips URLs already in DB (unless `--force`).
-* `malta_housing/db/store.py`: UPSERTs into `data/malta_properties.db`; logs price changes in `price_history`.
-* `malta_housing/web/`: Local browser UI — filter/search listings, open detail + price history.
+* `malta_housing/analysis/evaluator.py`: Ollama investment scoring (`investment_score` 0–10, pros, cons, summary) with pre-computed Python metrics (price/m², distance to Gżira, flags).
+* `malta_housing/analysis/ranker.py`: Fetches DB candidates, evaluates unevaluated listings, prints ranked console report.
+* `malta_housing/db/store.py`: UPSERTs into `data/malta_properties.db`; logs price changes in `price_history`; persists AI evaluations.
+* `malta_housing/db/queries.py`: Read API for the browser (filtering, sorting by `ai_score`, stats).
+* `malta_housing/web/`: Local browser UI — filter/search listings, AI score column, sort by score, detail view with pros/cons.
 * `setup.ps1`: Windows PowerShell install (venv + pinned deps + `init-db` only).
 * `run_all.ps1`: Windows PowerShell — all scrapers in sequence, then parse, then db.
 
@@ -133,8 +149,19 @@ malta-housing-ai/
 | `scraped_at` | `str \| null` | ISO timestamp from scrape |
 | `updated_at` | `str \| null` | ISO timestamp of last parse/DB write |
 | `distance_to_gzira_km` | `float \| null` | Estimated km to Gżira from `to_gzira.csv` |
+| `ai_score` | `float \| null` | Investment score 0–10 (denormalized from evaluations) |
+| `ai_summary` | `str \| null` | Two-sentence executive summary |
+| `ai_evaluated_at` | `str \| null` | ISO timestamp of last AI evaluation |
 
-**SQLite:** `data/malta_properties.db` — table `listings` (unique `url`) + `price_history` (`url`, `price_eur`, `recorded_at`) written on insert and whenever `price_eur` changes.
+**SQLite (`data/malta_properties.db`):**
+
+| Table | Purpose |
+| --- | --- |
+| `listings` | Unique `url`; property fields + `ai_score`, `ai_summary`, `ai_evaluated_at` |
+| `price_history` | `url`, `price_eur`, `recorded_at` — written on insert and whenever `price_eur` changes |
+| `evaluations` | Full AI result per URL: `ai_score`, `ai_summary`, `pros`, `cons`, `evaluation_json`, `evaluated_at` |
+
+On each `rank` evaluation, both `evaluations` and `listings` are updated. Previously evaluated URLs are skipped unless `--force`.
 
 ---
 
@@ -170,7 +197,7 @@ python -m malta_housing init-db
 
 ### Running the pipeline
 
-Ensure Ollama is running before `parse`.
+Ensure Ollama is running before `parse` or `rank`.
 
 **All portals (Windows, recommended):**
 
@@ -186,6 +213,7 @@ python -m malta_housing run --source maltapark --pages 3
 python -m malta_housing run --source ownersbest --pages 3
 python -m malta_housing run --source djar --pages 3
 python -m malta_housing run --source propertymarket --pages 3
+python -m malta_housing run --source yitaku --pages 3
 python -m malta_housing run --source remax --pages 3
 ```
 
@@ -207,6 +235,41 @@ Gozo listings are excluded (scrape / parse / db). To remove any already stored:
 python -m malta_housing purge-gozo
 ```
 
+Listings outside the €100k–€400k band can be purged:
+
+```bash
+python -m malta_housing purge-budget
+```
+
+### AI investment ranking
+
+Evaluate listings already in the database (requires `raw_text` in `scraped_listings.json` for each URL):
+
+```bash
+python -m malta_housing rank --top 10 --max-price 300000
+python -m malta_housing rank --top 10 --max-price 300000 --force   # re-evaluate cached
+```
+
+The command:
+
+1. Loads candidate listings from SQLite (optionally capped by `--max-price`)
+2. Skips URLs already evaluated (unless `--force`)
+3. Sends listing metadata + `raw_text` to Ollama (`qwen2.5:7b`)
+4. Stores results in `evaluations` and syncs `ai_score` / `ai_summary` onto `listings`
+5. Prints a ranked console report
+
+**Evaluation JSON shape:**
+
+```json
+{
+  "investment_score": 7.5,
+  "pros": ["Freehold", "Close to Gżira"],
+  "cons": ["Shell form", "No lift"],
+  "summary": "Two-sentence executive summary in English.",
+  "metrics": { "price_eur": 285000, "distance_to_gzira_km": 1.2, "price_per_sqm": 3200 }
+}
+```
+
 ### Browse the database (local UI)
 
 ```bash
@@ -215,9 +278,43 @@ python -m malta_housing serve
 
 Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Optional: `--host 0.0.0.0 --port 8765`.
 
+The browser shows:
+
+* **Score** column per listing (`ai_score` / 10, or `—` if not evaluated)
+* Default sort: **AI score ↓** (click the Score header to toggle direction)
+* Detail panel: investment summary, pros, cons, price history
+* Header stats: total listings, average price, scored count, average score
+
 No extra dependencies — stdlib HTTP server + static HTML/JS reading `data/malta_properties.db`.
 
-If `python -m malta_housing db` fails with `database is locked`, stop `serve` (or any other process using the DB) and retry.
+If `python -m malta_housing db` or `rank` fails with `database is locked`, stop `serve` (or any other process using the DB) and retry.
+
+**Query scores directly:**
+
+```bash
+sqlite3 data/malta_properties.db "
+SELECT title, price_eur, ai_score, ai_summary
+FROM listings
+WHERE ai_score IS NOT NULL
+ORDER BY ai_score DESC;
+"
+```
+
+---
+
+## CLI reference
+
+| Command | Description |
+| --- | --- |
+| `init-db` | Create / migrate SQLite schema |
+| `scrape --source <portal> --pages N` | Scrape one portal into staging JSON |
+| `parse [--force]` | Parse staging with Ollama |
+| `db` | UPSERT parsed JSON into SQLite |
+| `run --source <portal> --pages N [--force]` | scrape → parse → db |
+| `rank --top N [--max-price EUR] [--force]` | AI investment ranking |
+| `serve [--host HOST] [--port PORT]` | Local listings browser |
+| `purge-gozo` | Remove Gozo listings from DB + JSON |
+| `purge-budget` | Remove listings outside €100k–€400k |
 
 ---
 

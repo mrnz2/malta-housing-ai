@@ -550,14 +550,55 @@ body {
 
 .score-badge {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: center;
+  gap: 0.1rem;
   min-width: 2.25rem;
   padding: 0.2rem 0.45rem;
   border-radius: 999px;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   font-size: 0.82rem;
+}
+
+.score-denom {
+  font-size: 0.68rem;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.score-missing {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.sortable-th::after {
+  content: "↕";
+  margin-left: 0.25rem;
+  font-size: 0.72rem;
+  opacity: 0.35;
+}
+
+.sortable-th.is-active::after {
+  opacity: 1;
+}
+
+.sortable-th.is-active[data-direction="desc"]::after {
+  content: "↓";
+}
+
+.sortable-th.is-active[data-direction="asc"]::after {
+  content: "↑";
+}
+
+.sortable-th:hover {
+  color: var(--sea-deep);
 }
 
 .score-high {

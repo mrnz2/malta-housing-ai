@@ -20,6 +20,8 @@
     <div class="summary" id="summary">
       <span class="summary-item"><strong id="stat-total">—</strong> listings</span>
       <span class="summary-item">avg <strong id="stat-avg">—</strong></span>
+      <span class="summary-item"><strong id="stat-scored">—</strong> scored</span>
+      <span class="summary-item">avg score <strong id="stat-avg-score">—</strong></span>
     </div>
   </header>
 
@@ -79,7 +81,7 @@
 
         <label class="field">
           <span>Sort</span>
-          <select name="sort">
+          <select name="sort" id="filter-sort">
             <option value="created_desc">Newest added</option>
             <option value="updated_desc">Recently updated</option>
             <option value="price_asc">Price ↑</option>
@@ -88,7 +90,7 @@
             <option value="title_asc">Title A–Z</option>
             <option value="gzira_asc">Distance to Gżira ↑</option>
             <option value="gzira_desc">Distance to Gżira ↓</option>
-            <option value="ai_score_desc">AI score ↓</option>
+            <option value="ai_score_desc" selected>AI score ↓</option>
             <option value="ai_score_asc">AI score ↑</option>
           </select>
         </label>
@@ -110,7 +112,7 @@
           <thead>
             <tr>
               <th>Title</th>
-              <th>Score</th>
+              <th class="sortable-th" id="sort-score" data-sort="ai_score" title="Sort by AI score">Score</th>
               <th>Locality</th>
               <th>→ Gżira</th>
               <th>Price</th>

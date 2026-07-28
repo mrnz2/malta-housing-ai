@@ -16,6 +16,8 @@ _EMPTY_STATS: dict[str, Any] = {
     "avg_price": None,
     "min_price": None,
     "max_price": None,
+    "with_score": 0,
+    "avg_ai_score": None,
     "sources": {},
     "localities": [],
     "seller_types": [],
@@ -130,6 +132,17 @@ def get_stats(db_name: str | Path = DB_PATH) -> dict[str, Any]:
             """
         )
         property_types = [row["property_type"] for row in cur.fetchall()]
+
+        cur.execute(
+            f"""
+            SELECT
+                COUNT(ai_score) AS with_score,
+                AVG(ai_score) AS avg_ai_score
+            FROM listings
+            WHERE ai_score IS NOT NULL AND {_VISIBLE}
+            """
+        )
+        score_row = cur.fetchone()
     except sqlite3.OperationalError:
         conn.close()
         return dict(_EMPTY_STATS)
@@ -141,6 +154,12 @@ def get_stats(db_name: str | Path = DB_PATH) -> dict[str, Any]:
         "avg_price": int(price_row["avg_price"]) if price_row["avg_price"] is not None else None,
         "min_price": price_row["min_price"],
         "max_price": price_row["max_price"],
+        "with_score": score_row["with_score"] or 0,
+        "avg_ai_score": (
+            round(float(score_row["avg_ai_score"]), 1)
+            if score_row["avg_ai_score"] is not None
+            else None
+        ),
         "sources": sources,
         "localities": localities,
         "seller_types": seller_types,
