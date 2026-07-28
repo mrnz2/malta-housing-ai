@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from malta_housing.common import configure_stdio
 from malta_housing.db import queries
-from malta_housing.db.store import init_db
+from malta_housing.db.store import init_db, set_listing_hidden
 from malta_housing.paths import DB_PATH, PACKAGE_ROOT
 
 STATIC_DIR = PACKAGE_ROOT / "web" / "static"
@@ -77,6 +77,7 @@ class BrowseHandler(BaseHTTPRequestHandler):
                 max_price=_parse_int(qs.get("max_price")),
                 freehold=_parse_bool(qs.get("freehold")),
                 airspace=_parse_bool(qs.get("airspace")),
+                show_hidden=_parse_bool(qs.get("show_hidden")) is True,
                 sort=(qs.get("sort") or ["updated_desc"])[0],
                 limit=_parse_int(qs.get("limit")) or 100,
                 offset=_parse_int(qs.get("offset")) or 0,
@@ -97,6 +98,33 @@ class BrowseHandler(BaseHTTPRequestHandler):
         if match_hist:
             history = queries.get_price_history(int(match_hist.group(1)))
             self._send(*_json_bytes({"items": history}))
+            return
+
+        self._send(*_json_bytes({"error": "Not found"}, 404))
+
+    def do_POST(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        path = unquote(parsed.path)
+
+        match = re.fullmatch(r"/api/listings/(\d+)/hidden", path)
+        if match:
+            listing_id = int(match.group(1))
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                body = json.loads(raw.decode("utf-8") or "{}")
+            except json.JSONDecodeError:
+                self._send(*_json_bytes({"error": "Invalid JSON"}, 400))
+                return
+            if "hidden" not in body:
+                self._send(*_json_bytes({"error": "Missing 'hidden' boolean"}, 400))
+                return
+            hidden = bool(body["hidden"])
+            if not set_listing_hidden(listing_id, hidden):
+                self._send(*_json_bytes({"error": "Listing not found"}, 404))
+                return
+            listing = queries.get_listing(listing_id)
+            self._send(*_json_bytes(listing or {"id": listing_id, "is_hidden": hidden}))
             return
 
         self._send(*_json_bytes({"error": "Not found"}, 404))

@@ -52,7 +52,8 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
             source TEXT,
             scraped_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_hidden BOOLEAN DEFAULT 0
         )
         """
     )
@@ -62,6 +63,7 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
         ("scraped_at", "TIMESTAMP"),
         ("updated_at", "TIMESTAMP"),
         ("distance_to_gzira_km", "REAL"),
+        ("is_hidden", "BOOLEAN DEFAULT 0"),
     ):
         _ensure_column(cursor, "listings", column, col_def)
 
@@ -161,6 +163,23 @@ def delete_gozo_listings(db_name: str | Path = DB_PATH) -> dict[str, int]:
     conn.close()
     print(f"🗑️ Usunięto {len(to_delete)} ofert z Gozo z '{db_name}'.")
     return {"deleted": len(to_delete)}
+
+
+def set_listing_hidden(
+    listing_id: int, hidden: bool, db_name: str | Path = DB_PATH
+) -> bool:
+    """Set is_hidden for a listing by id. Returns False if the id was not found."""
+    init_db(db_name)
+    conn = _connect(db_name)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE listings SET is_hidden = ? WHERE id = ?",
+        (1 if hidden else 0, listing_id),
+    )
+    updated = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return updated
 
 
 def save_listings_to_db(

@@ -22,6 +22,7 @@ const els = {
   type: document.getElementById("filter-type"),
   dialog: document.getElementById("detail-dialog"),
   close: document.getElementById("detail-close"),
+  detailHidden: document.getElementById("detail-hidden"),
 };
 
 function euro(value) {
@@ -99,7 +100,7 @@ function renderRows(items) {
   els.body.innerHTML = "";
   if (!items.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="7"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
+    tr.innerHTML = `<td colspan="8"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
     els.body.appendChild(tr);
     return;
   }
@@ -108,6 +109,7 @@ function renderRows(items) {
     const tr = document.createElement("tr");
     tr.tabIndex = 0;
     tr.dataset.id = String(item.id);
+    if (item.is_hidden) tr.classList.add("is-hidden-row");
     const flags = flagsFor(item)
       .map((f) => `<span class="flag">${f}</span>`)
       .join("");
@@ -122,6 +124,12 @@ function renderRows(items) {
       <td>${item.bedrooms ?? "—"}</td>
       <td>${escapeHtml(item.seller_type || "—")}</td>
       <td>${escapeHtml(item.source || "—")}</td>
+      <td class="hide-cell">
+        <label class="check hide-check" title="Hide property">
+          <input type="checkbox" class="hide-toggle" data-id="${item.id}" ${item.is_hidden ? "checked" : ""} />
+          <span class="hide-label">Hide property</span>
+        </label>
+      </td>
     `;
     tr.addEventListener("click", () => openDetail(item.id));
     tr.addEventListener("keydown", (e) => {
@@ -130,7 +138,34 @@ function renderRows(items) {
         openDetail(item.id);
       }
     });
+    const hideToggle = tr.querySelector(".hide-toggle");
+    const hideCheck = tr.querySelector(".hide-check");
+    hideCheck.addEventListener("click", (e) => e.stopPropagation());
+    hideToggle.addEventListener("change", () => {
+      setHidden(item.id, hideToggle.checked);
+    });
     els.body.appendChild(tr);
+  }
+}
+
+async function setHidden(id, hidden) {
+  const res = await fetch(`/api/listings/${id}/hidden`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ hidden: Boolean(hidden) }),
+  });
+  if (!res.ok) {
+    await loadListings();
+    return;
+  }
+  // If we hid an item and are not showing hidden, remove it from the current view.
+  if (hidden && !state.filters.show_hidden) {
+    await loadListings();
+    return;
+  }
+  const row = els.body.querySelector(`tr[data-id="${id}"]`);
+  if (row) {
+    row.classList.toggle("is-hidden-row", Boolean(hidden));
   }
 }
 
@@ -215,6 +250,14 @@ async function openDetail(id) {
   const link = document.getElementById("detail-url");
   link.href = listing.url || "#";
   link.hidden = !listing.url;
+
+  els.detailHidden.checked = Boolean(listing.is_hidden);
+  els.detailHidden.onchange = async () => {
+    await setHidden(listing.id, els.detailHidden.checked);
+    if (els.detailHidden.checked && !state.filters.show_hidden) {
+      els.dialog.close();
+    }
+  };
 
   els.dialog.showModal();
 }

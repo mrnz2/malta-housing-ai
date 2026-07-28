@@ -273,11 +273,26 @@ body {
   background: rgba(10, 107, 120, 0.06);
 }
 
-.listings-table tbody tr:nth-child(1) { animation-delay: 0.02s; }
-.listings-table tbody tr:nth-child(2) { animation-delay: 0.04s; }
-.listings-table tbody tr:nth-child(3) { animation-delay: 0.06s; }
-.listings-table tbody tr:nth-child(4) { animation-delay: 0.08s; }
-.listings-table tbody tr:nth-child(5) { animation-delay: 0.1s; }
+.listings-table tbody tr.is-hidden-row {
+  opacity: 0.55;
+}
+
+.hide-cell {
+  white-space: nowrap;
+}
+
+.hide-check {
+  cursor: pointer;
+}
+
+.hide-label {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.detail-hide {
+  margin: 0 0 1rem;
+}
 
 .cell-title {
   font-weight: 600;

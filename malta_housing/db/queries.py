@@ -44,9 +44,11 @@ def _row_to_listing(row: sqlite3.Row) -> dict[str, Any]:
             data["key_features"] = []
     elif features is None:
         data["key_features"] = []
-    for flag in ("is_freehold", "has_airspace", "has_sea_view", "is_shell_form"):
+    for flag in ("is_freehold", "has_airspace", "has_sea_view", "is_shell_form", "is_hidden"):
         if flag in data and data[flag] is not None:
             data[flag] = bool(data[flag])
+        elif flag == "is_hidden":
+            data[flag] = False
     return data
 
 
@@ -141,6 +143,7 @@ def list_listings(
     max_price: int | None = None,
     freehold: bool | None = None,
     airspace: bool | None = None,
+    show_hidden: bool = False,
     sort: str = "updated_desc",
     limit: int = 100,
     offset: int = 0,
@@ -151,6 +154,9 @@ def list_listings(
 
     where: list[str] = []
     params: list[Any] = []
+
+    if not show_hidden:
+        where.append("(is_hidden = 0 OR is_hidden IS NULL)")
 
     if q:
         where.append("(title LIKE ? OR locality LIKE ? OR url LIKE ?)")
@@ -196,7 +202,7 @@ def list_listings(
                 id, url, title, price_eur, locality, property_type, bedrooms,
                 seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form,
                 key_features, source, scraped_at, created_at, updated_at,
-                distance_to_gzira_km
+                distance_to_gzira_km, is_hidden
             FROM listings
             {where_sql}
             ORDER BY {order_sql}
@@ -225,7 +231,7 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
                 id, url, title, price_eur, locality, property_type, bedrooms,
                 seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form,
                 key_features, source, scraped_at, created_at, updated_at,
-                distance_to_gzira_km
+                distance_to_gzira_km, is_hidden
             FROM listings
             WHERE id = ?
             """,

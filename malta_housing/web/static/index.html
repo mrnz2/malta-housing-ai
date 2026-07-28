@@ -73,6 +73,7 @@
         <div class="checks">
           <label class="check"><input type="checkbox" name="freehold" value="1" /> Freehold</label>
           <label class="check"><input type="checkbox" name="airspace" value="1" /> Airspace</label>
+          <label class="check"><input type="checkbox" name="show_hidden" value="1" /> Show hidden</label>
         </div>
 
         <label class="field">
@@ -111,6 +112,7 @@
               <th>Beds</th>
               <th>Seller</th>
               <th>Source</th>
+              <th>Hide</th>
             </tr>
           </thead>
           <tbody id="listings-body"></tbody>
@@ -134,6 +136,9 @@
         <button type="button" class="btn ghost" id="detail-close" aria-label="Close">Close</button>
       </header>
       <p class="detail-price" id="detail-price"></p>
+      <label class="check detail-hide">
+        <input type="checkbox" id="detail-hidden" /> Hide property
+      </label>
       <dl class="detail-grid" id="detail-grid"></dl>
       <div class="detail-features" id="detail-features"></div>
       <section class="history-block">
