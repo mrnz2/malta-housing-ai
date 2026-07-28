@@ -108,12 +108,13 @@ def run_rank(
     *,
     top: int = 10,
     max_price: int | None = None,
+    source: str | None = None,
     force: bool = False,
     db_name: str | Any = DB_PATH,
 ) -> list[dict[str, Any]]:
     """Evaluate unevaluated candidates, persist scores, return ranked rows."""
     init_db(db_name)
-    candidates = get_rank_candidates(max_price=max_price, db_name=db_name)
+    candidates = get_rank_candidates(max_price=max_price, source=source, db_name=db_name)
     if not candidates:
         print(f"⚠️ No candidate listings in {db_name}.")
         _print_report([], top=top, max_price=max_price)
@@ -126,8 +127,9 @@ def run_rank(
     skipped = len(candidates) - len(to_evaluate)
 
     print(
-        f"📊 Ranking: {len(candidates)} candidate(s), "
-        f"{len(to_evaluate)} to evaluate, {skipped} cached."
+        f"📊 Ranking: {len(candidates)} candidate(s)"
+        + (f" [{source}]" if source else "")
+        + f", {len(to_evaluate)} to evaluate, {skipped} cached."
     )
 
     evaluated_ok = 0

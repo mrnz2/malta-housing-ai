@@ -291,6 +291,7 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
 def get_rank_candidates(
     *,
     max_price: int | None = None,
+    source: str | None = None,
     db_name: str | Path = DB_PATH,
 ) -> list[dict[str, Any]]:
     """Visible listings eligible for investment ranking (optionally price-capped)."""
@@ -302,6 +303,9 @@ def get_rank_candidates(
     if max_price is not None:
         where.append("price_eur IS NOT NULL AND price_eur <= ?")
         params.append(max_price)
+    if source is not None:
+        where.append("source = ?")
+        params.append(source)
 
     where_sql = f"WHERE {' AND '.join(where)}"
     conn = _connect(db_name)

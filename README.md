@@ -310,7 +310,7 @@ ORDER BY ai_score DESC;
 | `scrape --source <portal> --pages N` | Scrape one portal into staging JSON |
 | `parse [--force]` | Parse staging with Ollama |
 | `db` | UPSERT parsed JSON into SQLite |
-| `run --source <portal> --pages N [--force]` | scrape → parse → db |
+| `run --source <portal> --pages N [--force] [--skip-rank]` | scrape → parse → db → rank |
 | `rank --top N [--max-price EUR] [--force]` | AI investment ranking |
 | `serve [--host HOST] [--port PORT]` | Local listings browser |
 | `purge-gozo` | Remove Gozo listings from DB + JSON |

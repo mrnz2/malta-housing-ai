@@ -60,9 +60,22 @@ def cmd_run(args: argparse.Namespace) -> None:
     cmd_scrape(args)
     run_parser(force=args.force)
     load_parsed_and_save()
+    if not args.skip_rank:
+        run_rank(
+            top=args.top,
+            max_price=args.max_price,
+            source=args.source,
+            force=args.force_eval,
+        )
 
 
-def cmd_serve(args: argparse.Namespace) -> None:
+def cmd_rank(args: argparse.Namespace) -> None:
+    run_rank(
+        top=args.top,
+        max_price=args.max_price,
+        source=args.source,
+        force=args.force,
+    )
     run_server(host=args.host, port=args.port)
 
 
@@ -88,8 +101,8 @@ def cmd_purge_gozo(_args: argparse.Namespace) -> None:
     print(f"✅ Purge complete (DB deleted={stats['deleted']}).")
 
 
-def cmd_rank(args: argparse.Namespace) -> None:
-    run_rank(top=args.top, max_price=args.max_price, force=args.force)
+def cmd_serve(args: argparse.Namespace) -> None:
+    run_server(host=args.host, port=args.port)
 
 
 def cmd_purge_budget(_args: argparse.Namespace) -> None:
@@ -150,7 +163,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_db = sub.add_parser("db", help="UPSERT parsed_listings.json into SQLite")
     p_db.set_defaults(func=cmd_db)
 
-    p_run = sub.add_parser("run", help="Full pipeline: scrape → parse → db")
+    p_run = sub.add_parser("run", help="Full pipeline: scrape → parse → db → rank")
     p_run.add_argument(
         "--source",
         required=True,
@@ -170,6 +183,28 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="Force re-parse of known URLs",
+    )
+    p_run.add_argument(
+        "--skip-rank",
+        action="store_true",
+        help="Skip AI evaluation after db (default: evaluate unevaluated listings)",
+    )
+    p_run.add_argument(
+        "--top",
+        type=int,
+        default=10,
+        help="Number of top listings to show after evaluation (default 10)",
+    )
+    p_run.add_argument(
+        "--max-price",
+        type=int,
+        default=None,
+        help="Only evaluate/rank listings at or below this EUR price",
+    )
+    p_run.add_argument(
+        "--force-eval",
+        action="store_true",
+        help="Re-evaluate listings that already have cached scores",
     )
     p_run.set_defaults(func=cmd_run)
 
@@ -208,6 +243,20 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Only consider listings at or below this EUR price (e.g. 300000)",
+    )
+    p_rank.add_argument(
+        "--source",
+        default=None,
+        choices=[
+            "maltapark",
+            "ownersbest",
+            "djar",
+            "propertymarket",
+            "yitaku",
+            "remax",
+            "simonmamo",
+        ],
+        help="Only evaluate listings from this portal (default: all sources)",
     )
     p_rank.add_argument(
         "--force",
