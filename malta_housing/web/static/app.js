@@ -100,7 +100,7 @@ function renderRows(items) {
   els.body.innerHTML = "";
   if (!items.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="8"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
+    tr.innerHTML = `<td colspan="7"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
     els.body.appendChild(tr);
     return;
   }
@@ -122,7 +122,6 @@ function renderRows(items) {
       <td class="price">${formatKm(item.distance_to_gzira_km)}</td>
       <td class="price">${euro(item.price_eur)}</td>
       <td>${item.bedrooms ?? "—"}</td>
-      <td>${escapeHtml(item.seller_type || "—")}</td>
       <td>${escapeHtml(item.source || "—")}</td>
       <td class="hide-cell">
         <label class="check hide-check" title="Hide property">
