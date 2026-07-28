@@ -47,6 +47,15 @@ _LISTING_COLUMNS = """
     ai_score, ai_summary, ai_evaluated_at
 """
 
+_LISTING_COLUMNS_QUALIFIED = """
+    listings.id, listings.url, listings.title, listings.price_eur, listings.locality,
+    listings.property_type, listings.bedrooms, listings.seller_type, listings.is_freehold,
+    listings.has_airspace, listings.has_sea_view, listings.is_shell_form,
+    listings.key_features, listings.source, listings.scraped_at, listings.created_at,
+    listings.updated_at, listings.distance_to_gzira_km, listings.is_hidden, listings.notes,
+    listings.ai_score, listings.ai_summary, listings.ai_evaluated_at
+"""
+
 
 def _row_to_listing(row: sqlite3.Row) -> dict[str, Any]:
     data = dict(row)
@@ -260,7 +269,7 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
         cur.execute(
             f"""
             SELECT
-                {_LISTING_COLUMNS},
+                {_LISTING_COLUMNS_QUALIFIED},
                 e.pros, e.cons, e.evaluation_json
             FROM listings
             LEFT JOIN evaluations e ON e.url = listings.url
@@ -341,12 +350,12 @@ def get_ranked_listings(
     if not Path(db_name).exists():
         return []
 
-    where = [_VISIBLE]
+    where = [_VISIBLE.replace("is_hidden", "listings.is_hidden")]
     params: list[Any] = []
     if max_price is not None:
-        where.append("price_eur IS NOT NULL AND price_eur <= ?")
+        where.append("listings.price_eur IS NOT NULL AND listings.price_eur <= ?")
         params.append(max_price)
-    where.append("ai_score IS NOT NULL")
+    where.append("listings.ai_score IS NOT NULL")
 
     where_sql = f"WHERE {' AND '.join(where)}"
     limit = max(1, min(limit, 500))
@@ -357,7 +366,7 @@ def get_ranked_listings(
         cur.execute(
             f"""
             SELECT
-                {_LISTING_COLUMNS},
+                {_LISTING_COLUMNS_QUALIFIED},
                 e.pros, e.cons, e.evaluation_json, e.evaluated_at
             FROM listings
             LEFT JOIN evaluations e ON e.url = listings.url
