@@ -85,6 +85,25 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
         "CREATE INDEX IF NOT EXISTS idx_price_history_url ON price_history(url)"
     )
 
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS evaluations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT UNIQUE NOT NULL,
+            ai_score REAL NOT NULL,
+            ai_summary TEXT,
+            pros TEXT,
+            cons TEXT,
+            evaluation_json TEXT,
+            evaluated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (url) REFERENCES listings(url)
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_evaluations_score ON evaluations(ai_score DESC)"
+    )
+
     conn.commit()
     _backfill_gzira_distances(conn)
     _backfill_sources(conn)
@@ -419,3 +438,57 @@ def load_parsed_and_save(
         print(f"⚠️ Brak danych w {parsed_path} — nic do zapisania.")
         return
     save_listings_to_db(parsed_data, db_name=db_name)
+
+
+def get_evaluated_urls(db_name: str | Path = DB_PATH) -> set[str]:
+    """Return URLs that already have a stored AI evaluation."""
+    if not Path(db_name).exists():
+        return set()
+    init_db(db_name)
+    conn = _connect(db_name)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT url FROM evaluations")
+        urls = {row["url"] for row in cursor.fetchall()}
+    except sqlite3.OperationalError:
+        urls = set()
+    conn.close()
+    return urls
+
+
+def save_evaluation(
+    url: str,
+    evaluation: dict[str, Any],
+    db_name: str | Path = DB_PATH,
+) -> None:
+    """Persist or update an LLM investment evaluation for a listing URL."""
+    init_db(db_name)
+    score = evaluation["investment_score"]
+    summary = evaluation.get("summary", "")
+    pros = evaluation.get("pros", [])
+    cons = evaluation.get("cons", [])
+    if not isinstance(pros, str):
+        pros = json.dumps(pros, ensure_ascii=False)
+    if not isinstance(cons, str):
+        cons = json.dumps(cons, ensure_ascii=False)
+    payload = json.dumps(evaluation, ensure_ascii=False)
+    now = utc_now_iso()
+
+    conn = _connect(db_name)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO evaluations (url, ai_score, ai_summary, pros, cons, evaluation_json, evaluated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(url) DO UPDATE SET
+            ai_score = excluded.ai_score,
+            ai_summary = excluded.ai_summary,
+            pros = excluded.pros,
+            cons = excluded.cons,
+            evaluation_json = excluded.evaluation_json,
+            evaluated_at = excluded.evaluated_at
+        """,
+        (url, score, summary, pros, cons, payload, now),
+    )
+    conn.commit()
+    conn.close()

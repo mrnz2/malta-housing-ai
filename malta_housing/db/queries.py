@@ -251,6 +251,106 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
     return _row_to_listing(row) if row else None
 
 
+def get_rank_candidates(
+    *,
+    max_price: int | None = None,
+    db_name: str | Path = DB_PATH,
+) -> list[dict[str, Any]]:
+    """Visible listings eligible for investment ranking (optionally price-capped)."""
+    if not Path(db_name).exists():
+        return []
+
+    where = [_VISIBLE]
+    params: list[Any] = []
+    if max_price is not None:
+        where.append("price_eur IS NOT NULL AND price_eur <= ?")
+        params.append(max_price)
+
+    where_sql = f"WHERE {' AND '.join(where)}"
+    conn = _connect(db_name)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"""
+            SELECT
+                id, url, title, price_eur, locality, property_type, bedrooms,
+                seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form,
+                key_features, source, scraped_at, created_at, updated_at,
+                distance_to_gzira_km, is_hidden, notes
+            FROM listings
+            {where_sql}
+            ORDER BY price_eur ASC, id DESC
+            """,
+            params,
+        )
+        items = [_row_to_listing(row) for row in cur.fetchall()]
+    except sqlite3.OperationalError:
+        items = []
+    conn.close()
+    return items
+
+
+def _enrich_with_evaluation(row: dict[str, Any]) -> dict[str, Any]:
+    pros = row.get("pros")
+    cons = row.get("cons")
+    if isinstance(pros, str):
+        try:
+            row["pros"] = json.loads(pros)
+        except json.JSONDecodeError:
+            row["pros"] = []
+    if isinstance(cons, str):
+        try:
+            row["cons"] = json.loads(cons)
+        except json.JSONDecodeError:
+            row["cons"] = []
+    return row
+
+
+def get_ranked_listings(
+    *,
+    max_price: int | None = None,
+    limit: int = 100,
+    db_name: str | Path = DB_PATH,
+) -> list[dict[str, Any]]:
+    """Listings joined with evaluations, sorted by ai_score descending."""
+    if not Path(db_name).exists():
+        return []
+
+    where = [_VISIBLE.replace("is_hidden", "l.is_hidden")]
+    params: list[Any] = []
+    if max_price is not None:
+        where.append("l.price_eur IS NOT NULL AND l.price_eur <= ?")
+        params.append(max_price)
+
+    where_sql = f"WHERE {' AND '.join(where)}"
+    limit = max(1, min(limit, 500))
+
+    conn = _connect(db_name)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"""
+            SELECT
+                l.id, l.url, l.title, l.price_eur, l.locality, l.property_type, l.bedrooms,
+                l.seller_type, l.is_freehold, l.has_airspace, l.has_sea_view, l.is_shell_form,
+                l.key_features, l.source, l.scraped_at, l.created_at, l.updated_at,
+                l.distance_to_gzira_km, l.is_hidden, l.notes,
+                e.ai_score, e.ai_summary, e.pros, e.cons, e.evaluation_json, e.evaluated_at
+            FROM listings l
+            INNER JOIN evaluations e ON e.url = l.url
+            {where_sql}
+            ORDER BY e.ai_score DESC, l.price_eur ASC, l.id DESC
+            LIMIT ?
+            """,
+            [*params, limit],
+        )
+        items = [_enrich_with_evaluation(_row_to_listing(row)) for row in cur.fetchall()]
+    except sqlite3.OperationalError:
+        items = []
+    conn.close()
+    return items
+
+
 def get_price_history(listing_id: int, db_name: str | Path = DB_PATH) -> list[dict[str, Any]]:
     listing = get_listing(listing_id, db_name=db_name)
     if not listing:

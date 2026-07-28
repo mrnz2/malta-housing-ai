@@ -20,6 +20,7 @@ from malta_housing.scrapers.ownersbest import run_ownersbest_scraper
 from malta_housing.scrapers.propertymarket import run_propertymarket_scraper
 from malta_housing.scrapers.remax import run_remax_scraper
 from malta_housing.scrapers.yitaku import run_yitaku_scraper
+from malta_housing.analysis.ranker import run_rank
 from malta_housing.web.server import run_server
 
 
@@ -82,6 +83,10 @@ def cmd_purge_gozo(_args: argparse.Namespace) -> None:
             save_json_list(path, kept)
             print(f"🧹 Usunięto {removed} ofert Gozo z {path.name}.")
     print(f"✅ Purge complete (DB deleted={stats['deleted']}).")
+
+
+def cmd_rank(args: argparse.Namespace) -> None:
+    run_rank(top=args.top, max_price=args.max_price, force=args.force)
 
 
 def cmd_purge_budget(_args: argparse.Namespace) -> None:
@@ -168,6 +173,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Delete listings priced under €100k or over €400k from SQLite and parsed JSON",
     )
     p_purge_budget.set_defaults(func=cmd_purge_budget)
+
+    p_rank = sub.add_parser(
+        "rank",
+        help="AI investment ranking via Ollama (qwen2.5:7b); caches scores in SQLite",
+    )
+    p_rank.add_argument(
+        "--top",
+        type=int,
+        default=10,
+        help="Number of top listings to display (default 10)",
+    )
+    p_rank.add_argument(
+        "--max-price",
+        type=int,
+        default=None,
+        help="Only consider listings at or below this EUR price (e.g. 300000)",
+    )
+    p_rank.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-evaluate listings that already have cached scores",
+    )
+    p_rank.set_defaults(func=cmd_rank)
 
     return parser
 
