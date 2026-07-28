@@ -294,6 +294,62 @@ body {
   margin: 0 0 1rem;
 }
 
+.detail-notes-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0 0 0.65rem;
+}
+
+.detail-notes-field span {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.detail-notes-field textarea {
+  font: 500 0.95rem/1.4 var(--font-body);
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  padding: 0.7rem 0.8rem;
+  resize: vertical;
+  min-height: 4.5rem;
+}
+
+.detail-notes-field textarea:focus {
+  outline: 2px solid rgba(10, 107, 120, 0.35);
+  border-color: var(--sea);
+}
+
+.detail-notes-save {
+  align-self: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.detail-notes-status {
+  margin: -0.35rem 0 0.85rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.notes-cell {
+  max-width: 14rem;
+}
+
+.cell-notes {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
 .cell-title {
   font-weight: 600;
   max-width: 28rem;

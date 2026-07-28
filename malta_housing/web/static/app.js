@@ -23,6 +23,9 @@ const els = {
   dialog: document.getElementById("detail-dialog"),
   close: document.getElementById("detail-close"),
   detailHidden: document.getElementById("detail-hidden"),
+  detailNotes: document.getElementById("detail-notes"),
+  detailNotesSave: document.getElementById("detail-notes-save"),
+  detailNotesStatus: document.getElementById("detail-notes-status"),
 };
 
 function euro(value) {
@@ -100,7 +103,7 @@ function renderRows(items) {
   els.body.innerHTML = "";
   if (!items.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="7"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
+    tr.innerHTML = `<td colspan="8"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
     els.body.appendChild(tr);
     return;
   }
@@ -113,6 +116,10 @@ function renderRows(items) {
     const flags = flagsFor(item)
       .map((f) => `<span class="flag">${f}</span>`)
       .join("");
+    const notesText = typeof item.notes === "string" ? item.notes.trim() : "";
+    const notesCell = notesText
+      ? `<td class="notes-cell"><span class="cell-notes" title="${escapeHtml(notesText)}">${escapeHtml(notesText)}</span></td>`
+      : `<td class="notes-cell"></td>`;
     tr.innerHTML = `
       <td>
         <div class="cell-title">${escapeHtml(item.title || "Untitled")}</div>
@@ -123,6 +130,7 @@ function renderRows(items) {
       <td class="price">${euro(item.price_eur)}</td>
       <td>${item.bedrooms ?? "—"}</td>
       <td>${escapeHtml(item.source || "—")}</td>
+      ${notesCell}
       <td class="hide-cell">
         <label class="check hide-check" title="Hide property">
           <input type="checkbox" class="hide-toggle" data-id="${item.id}" ${item.is_hidden ? "checked" : ""} />
@@ -166,6 +174,38 @@ async function setHidden(id, hidden) {
   const row = els.body.querySelector(`tr[data-id="${id}"]`);
   if (row) {
     row.classList.toggle("is-hidden-row", Boolean(hidden));
+  }
+}
+
+async function saveNotes(id, notes) {
+  const res = await fetch(`/api/listings/${id}/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ notes }),
+  });
+  if (!res.ok) {
+    els.detailNotesStatus.hidden = false;
+    els.detailNotesStatus.textContent = "Could not save notes.";
+    return false;
+  }
+  const listing = await res.json();
+  updateNotesCell(id, listing.notes || "");
+  els.detailNotes.value = listing.notes || "";
+  els.detailNotesStatus.hidden = false;
+  els.detailNotesStatus.textContent = "Notes saved.";
+  return true;
+}
+
+function updateNotesCell(id, notes) {
+  const row = els.body.querySelector(`tr[data-id="${id}"]`);
+  if (!row) return;
+  const cell = row.querySelector(".notes-cell");
+  if (!cell) return;
+  const text = typeof notes === "string" ? notes.trim() : "";
+  if (text) {
+    cell.innerHTML = `<span class="cell-notes" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`;
+  } else {
+    cell.innerHTML = "";
   }
 }
 
@@ -257,6 +297,13 @@ async function openDetail(id) {
     if (els.detailHidden.checked && !state.filters.show_hidden) {
       els.dialog.close();
     }
+  };
+
+  els.detailNotes.value = listing.notes || "";
+  els.detailNotesStatus.hidden = true;
+  els.detailNotesStatus.textContent = "";
+  els.detailNotesSave.onclick = async () => {
+    await saveNotes(listing.id, els.detailNotes.value);
   };
 
   els.dialog.showModal();

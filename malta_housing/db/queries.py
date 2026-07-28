@@ -208,7 +208,7 @@ def list_listings(
                 id, url, title, price_eur, locality, property_type, bedrooms,
                 seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form,
                 key_features, source, scraped_at, created_at, updated_at,
-                distance_to_gzira_km, is_hidden
+                distance_to_gzira_km, is_hidden, notes
             FROM listings
             {where_sql}
             ORDER BY {order_sql}
@@ -237,7 +237,7 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
                 id, url, title, price_eur, locality, property_type, bedrooms,
                 seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form,
                 key_features, source, scraped_at, created_at, updated_at,
-                distance_to_gzira_km, is_hidden
+                distance_to_gzira_km, is_hidden, notes
             FROM listings
             WHERE id = ?
             """,

@@ -8,6 +8,7 @@ from malta_housing.db.store import (
     load_parsed_and_save,
     save_listings_to_db,
     set_listing_hidden,
+    set_listing_notes,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "load_parsed_and_save",
     "save_listings_to_db",
     "set_listing_hidden",
+    "set_listing_notes",
 ]

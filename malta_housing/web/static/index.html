@@ -113,6 +113,7 @@
               <th>Price</th>
               <th>Beds</th>
               <th>Source</th>
+              <th>Notes</th>
               <th>Hide</th>
             </tr>
           </thead>
@@ -140,6 +141,12 @@
       <label class="check detail-hide">
         <input type="checkbox" id="detail-hidden" /> Hide property
       </label>
+      <label class="field detail-notes-field">
+        <span>Notes</span>
+        <textarea id="detail-notes" rows="3" placeholder="Add a note…"></textarea>
+      </label>
+      <button type="button" class="btn primary detail-notes-save" id="detail-notes-save">Save notes</button>
+      <p class="detail-notes-status" id="detail-notes-status" hidden></p>
       <dl class="detail-grid" id="detail-grid"></dl>
       <div class="detail-features" id="detail-features"></div>
       <section class="history-block">

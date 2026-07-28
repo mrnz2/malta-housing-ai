@@ -54,7 +54,8 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
             scraped_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            is_hidden BOOLEAN DEFAULT 0
+            is_hidden BOOLEAN DEFAULT 0,
+            notes TEXT
         )
         """
     )
@@ -65,6 +66,7 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
         ("updated_at", "TIMESTAMP"),
         ("distance_to_gzira_km", "REAL"),
         ("is_hidden", "BOOLEAN DEFAULT 0"),
+        ("notes", "TEXT"),
     ):
         _ensure_column(cursor, "listings", column, col_def)
 
@@ -249,6 +251,24 @@ def set_listing_hidden(
     cur.execute(
         "UPDATE listings SET is_hidden = ? WHERE id = ?",
         (1 if hidden else 0, listing_id),
+    )
+    updated = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return updated
+
+
+def set_listing_notes(
+    listing_id: int, notes: str | None, db_name: str | Path = DB_PATH
+) -> bool:
+    """Set notes for a listing by id. Empty/whitespace becomes NULL. Returns False if missing."""
+    init_db(db_name)
+    cleaned = (notes or "").strip() or None
+    conn = _connect(db_name)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE listings SET notes = ? WHERE id = ?",
+        (cleaned, listing_id),
     )
     updated = cur.rowcount > 0
     conn.commit()
