@@ -75,6 +75,7 @@ def cmd_rank(args: argparse.Namespace) -> None:
         max_price=args.max_price,
         source=args.source,
         force=args.force,
+        new_only=args.new_only,
     )
 
 
@@ -261,6 +262,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="Re-evaluate listings that already have cached scores",
+    )
+    p_rank.add_argument(
+        "--new-only",
+        action="store_true",
+        help="Only evaluate listings scraped on the latest scrape day",
     )
     p_rank.set_defaults(func=cmd_rank)
 

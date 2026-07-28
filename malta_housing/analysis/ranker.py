@@ -8,7 +8,7 @@ from typing import Any
 from malta_housing.analysis.evaluator import evaluate_listing
 from malta_housing.common import STAGING_PATH, load_json_list
 from malta_housing.db.store import get_evaluated_urls, init_db, save_evaluation
-from malta_housing.db.queries import get_rank_candidates
+from malta_housing.db.queries import get_latest_scrape_day, get_rank_candidates
 from malta_housing.models import ParsedListing
 from malta_housing.paths import DB_PATH
 
@@ -165,17 +165,31 @@ def _print_report(ranked: list[dict[str, Any]], *, top: int, max_price: int | No
     print()
 
 
+def _filter_latest_scrape(candidates: list[dict[str, Any]], latest_day: str | None) -> list[dict[str, Any]]:
+    if not latest_day:
+        return []
+    return [
+        row
+        for row in candidates
+        if row.get("scraped_at") and str(row["scraped_at"])[:10] == latest_day
+    ]
+
+
 def run_rank(
     *,
     top: int = 10,
     max_price: int | None = None,
     source: str | None = None,
     force: bool = False,
+    new_only: bool = False,
     db_name: str | Any = DB_PATH,
 ) -> list[dict[str, Any]]:
     """Evaluate unevaluated candidates, persist scores, return ranked rows."""
     init_db(db_name)
     candidates = get_rank_candidates(max_price=max_price, source=source, db_name=db_name)
+    if new_only:
+        latest_day = get_latest_scrape_day(db_name=db_name)
+        candidates = _filter_latest_scrape(candidates, latest_day)
     if not candidates:
         print(f"⚠️ No candidate listings in {db_name}.")
         _print_report([], top=top, max_price=max_price)
@@ -190,6 +204,7 @@ def run_rank(
     print(
         f"📊 Ranking: {len(candidates)} candidate(s)"
         + (f" [{source}]" if source else "")
+        + (" [latest scrape]" if new_only else "")
         + f", {len(to_evaluate)} to evaluate, {skipped} cached."
     )
     if skipped and not force:

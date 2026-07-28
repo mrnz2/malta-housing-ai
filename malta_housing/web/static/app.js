@@ -128,9 +128,9 @@ function formatKm(value) {
 function formatSeaProximity(value) {
   if (!value) return "—";
   const labels = {
-    nad_morzem: "nad morzem",
-    blisko: "blisko",
-    daleko: "daleko",
+    nad_morzem: "seafront",
+    blisko: "near sea",
+    daleko: "inland",
   };
   return labels[value] || String(value).replaceAll("_", " ");
 }
@@ -148,10 +148,18 @@ function formatScore(value) {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
+const BREAKDOWN_LABELS = {
+  price_per_sqm: "Price/m²",
+  distance_to_gzira: "Distance to Gżira",
+  sea_proximity: "Sea proximity",
+  area_sqm: "Area",
+  structured_flags: "Property flags",
+};
+
 function formatBreakdown(breakdown) {
   if (!breakdown || typeof breakdown !== "object") return "";
   return Object.entries(breakdown)
-    .map(([key, value]) => `${key}: ${value}`)
+    .map(([key, value]) => `${BREAKDOWN_LABELS[key] || key}: ${value}`)
     .join(" · ");
 }
 
@@ -176,11 +184,22 @@ function scoreClass(value) {
   return "score-low";
 }
 
+const TABLE_COLS = 9;
+
+function renderNotesRow(id, notesText) {
+  const tr = document.createElement("tr");
+  tr.className = "notes-row";
+  tr.dataset.notesFor = String(id);
+  tr.innerHTML = `<td colspan="${TABLE_COLS}"><div class="row-notes">${escapeHtml(notesText)}</div></td>`;
+  tr.addEventListener("click", () => openDetail(id));
+  return tr;
+}
+
 function renderRows(items) {
   els.body.innerHTML = "";
   if (!items.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="10"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
+    tr.innerHTML = `<td colspan="${TABLE_COLS}"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
     els.body.appendChild(tr);
     return;
   }
@@ -194,16 +213,14 @@ function renderRows(items) {
       .map((f) => `<span class="flag">${f}</span>`)
       .join("");
     const notesText = typeof item.notes === "string" ? item.notes.trim() : "";
-    const notesCell = notesText
-      ? `<td class="notes-cell"><span class="cell-notes" title="${escapeHtml(notesText)}">${escapeHtml(notesText)}</span></td>`
-      : `<td class="notes-cell"></td>`;
+    const newBadge = item.is_new ? `<span class="badge-new">New</span>` : "";
     const score = item.ai_score;
     const scoreCell = score == null
       ? `<td class="score-cell"><span class="score-missing">—</span></td>`
       : `<td class="score-cell"><span class="score-badge ${scoreClass(score)}" title="${escapeHtml(item.ai_summary || "")}">${formatScore(score)}<span class="score-denom">/10</span></span></td>`;
     tr.innerHTML = `
       <td>
-        <div class="cell-title">${escapeHtml(item.title || "Untitled")}</div>
+        <div class="cell-title">${newBadge}${escapeHtml(item.title || "Untitled")}</div>
         <span class="cell-meta">${flags || escapeHtml(item.property_type || "")}</span>
       </td>
       ${scoreCell}
@@ -213,11 +230,10 @@ function renderRows(items) {
       <td class="price">${euro(item.price_eur)}</td>
       <td>${item.bedrooms ?? "—"}</td>
       <td>${escapeHtml(item.source || "—")}</td>
-      ${notesCell}
       <td class="hide-cell">
-        <label class="check hide-check" title="Hide property">
+        <label class="check hide-check" title="Hide">
           <input type="checkbox" class="hide-toggle" data-id="${item.id}" ${item.is_hidden ? "checked" : ""} />
-          <span class="hide-label">Hide property</span>
+          <span class="hide-label">Hide</span>
         </label>
       </td>
     `;
@@ -235,6 +251,11 @@ function renderRows(items) {
       setHidden(item.id, hideToggle.checked);
     });
     els.body.appendChild(tr);
+    if (notesText) {
+      const notesRow = renderNotesRow(item.id, notesText);
+      if (item.is_hidden) notesRow.classList.add("is-hidden-row");
+      els.body.appendChild(notesRow);
+    }
   }
 }
 
@@ -249,14 +270,16 @@ async function setHidden(id, hidden) {
     return;
   }
   await loadStats();
-  // If we hid an item and are not showing hidden, remove it from the current view.
-  if (hidden && !state.filters.show_hidden) {
+  // Remove item from current view when it no longer matches the hidden filter.
+  if ((hidden && !state.filters.show_hidden) || (!hidden && state.filters.show_hidden)) {
     await loadListings();
     return;
   }
   const row = els.body.querySelector(`tr[data-id="${id}"]`);
   if (row) {
     row.classList.toggle("is-hidden-row", Boolean(hidden));
+    const notesRow = els.body.querySelector(`tr.notes-row[data-notes-for="${id}"]`);
+    if (notesRow) notesRow.classList.toggle("is-hidden-row", Boolean(hidden));
   }
 }
 
@@ -282,14 +305,18 @@ async function saveNotes(id, notes) {
 function updateNotesCell(id, notes) {
   const row = els.body.querySelector(`tr[data-id="${id}"]`);
   if (!row) return;
-  const cell = row.querySelector(".notes-cell");
-  if (!cell) return;
+  const existing = els.body.querySelector(`tr.notes-row[data-notes-for="${id}"]`);
   const text = typeof notes === "string" ? notes.trim() : "";
-  if (text) {
-    cell.innerHTML = `<span class="cell-notes" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`;
-  } else {
-    cell.innerHTML = "";
+  if (!text) {
+    existing?.remove();
+    return;
   }
+  if (existing) {
+    const el = existing.querySelector(".row-notes");
+    if (el) el.textContent = text;
+    return;
+  }
+  row.after(renderNotesRow(id, text));
 }
 
 function escapeHtml(text) {
@@ -330,6 +357,7 @@ async function openDetail(id) {
   const history = historyPayload.items || [];
 
   document.getElementById("detail-kicker").textContent = [
+    listing.is_new ? "New" : null,
     listing.locality,
     listing.property_type,
     listing.source,
@@ -406,7 +434,10 @@ async function openDetail(id) {
   els.detailHidden.checked = Boolean(listing.is_hidden);
   els.detailHidden.onchange = async () => {
     await setHidden(listing.id, els.detailHidden.checked);
-    if (els.detailHidden.checked && !state.filters.show_hidden) {
+    if (
+      (els.detailHidden.checked && !state.filters.show_hidden) ||
+      (!els.detailHidden.checked && state.filters.show_hidden)
+    ) {
       els.dialog.close();
     }
   };

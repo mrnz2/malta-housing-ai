@@ -75,7 +75,35 @@ def _row_to_listing(row: sqlite3.Row) -> dict[str, Any]:
     return data
 
 
+def _latest_scrape_day(cur: sqlite3.Cursor) -> str | None:
+    cur.execute("SELECT MAX(scraped_at) AS mx FROM listings WHERE scraped_at IS NOT NULL")
+    mx = cur.fetchone()["mx"]
+    return str(mx)[:10] if mx else None
+
+
+def get_latest_scrape_day(db_name: str | Path = DB_PATH) -> str | None:
+    if not Path(db_name).exists():
+        return None
+    conn = _connect(db_name)
+    cur = conn.cursor()
+    try:
+        return _latest_scrape_day(cur)
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        conn.close()
+
+
+def _annotate_is_new(items: list[dict[str, Any]], latest_day: str | None) -> None:
+    if not latest_day:
+        return
+    for item in items:
+        scraped_at = item.get("scraped_at")
+        item["is_new"] = bool(scraped_at and str(scraped_at)[:10] == latest_day)
+
+
 _VISIBLE = "(is_hidden = 0 OR is_hidden IS NULL)"
+_HIDDEN = "is_hidden = 1"
 
 
 def get_stats(db_name: str | Path = DB_PATH) -> dict[str, Any]:
@@ -199,7 +227,9 @@ def list_listings(
     where: list[str] = []
     params: list[Any] = []
 
-    if not show_hidden:
+    if show_hidden:
+        where.append(_HIDDEN)
+    else:
         where.append(_VISIBLE)
 
     if q:
@@ -240,6 +270,7 @@ def list_listings(
         cur.execute(f"SELECT COUNT(*) AS n FROM listings {where_sql}", params)
         total = cur.fetchone()["n"]
 
+        latest_day = _latest_scrape_day(cur)
         cur.execute(
             f"""
             SELECT
@@ -252,6 +283,7 @@ def list_listings(
             [*params, limit, offset],
         )
         items = [_row_to_listing(row) for row in cur.fetchall()]
+        _annotate_is_new(items, latest_day)
     except sqlite3.OperationalError:
         conn.close()
         return {"total": 0, "items": [], "limit": limit, "offset": offset}
@@ -278,6 +310,7 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
             (listing_id,),
         )
         row = cur.fetchone()
+        latest_day = _latest_scrape_day(cur)
     except sqlite3.OperationalError:
         conn.close()
         return None
@@ -285,6 +318,7 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
     if not row:
         return None
     listing = _enrich_with_evaluation(_row_to_listing(row))
+    _annotate_is_new([listing], latest_day)
     return listing
 
 
