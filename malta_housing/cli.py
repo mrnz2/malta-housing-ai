@@ -19,6 +19,7 @@ from malta_housing.scrapers.maltapark import run_scraper
 from malta_housing.scrapers.ownersbest import run_ownersbest_scraper
 from malta_housing.scrapers.propertymarket import run_propertymarket_scraper
 from malta_housing.scrapers.remax import run_remax_scraper
+from malta_housing.scrapers.simonmamo import run_simonmamo_scraper
 from malta_housing.scrapers.yitaku import run_yitaku_scraper
 from malta_housing.analysis.ranker import run_rank
 from malta_housing.web.server import run_server
@@ -41,6 +42,8 @@ def cmd_scrape(args: argparse.Namespace) -> None:
         run_yitaku_scraper(max_pages=args.pages)
     elif source == "remax":
         run_remax_scraper(max_pages=args.pages)
+    elif source == "simonmamo":
+        run_simonmamo_scraper(max_pages=args.pages)
     else:
         run_djar_scraper(max_pages=args.pages)
 
@@ -122,7 +125,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_scrape.add_argument(
         "--source",
         required=True,
-        choices=["maltapark", "ownersbest", "djar", "propertymarket", "yitaku", "remax"],
+        choices=[
+            "maltapark",
+            "ownersbest",
+            "djar",
+            "propertymarket",
+            "yitaku",
+            "remax",
+            "simonmamo",
+        ],
         help="Portal to scrape",
     )
     p_scrape.add_argument("--pages", type=int, default=3, help="Number of listing pages")
@@ -143,7 +154,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument(
         "--source",
         required=True,
-        choices=["maltapark", "ownersbest", "djar", "propertymarket", "yitaku", "remax"],
+        choices=[
+            "maltapark",
+            "ownersbest",
+            "djar",
+            "propertymarket",
+            "yitaku",
+            "remax",
+            "simonmamo",
+        ],
         help="Portal to scrape",
     )
     p_run.add_argument("--pages", type=int, default=3, help="Number of listing pages")

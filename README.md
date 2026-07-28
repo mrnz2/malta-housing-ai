@@ -103,7 +103,7 @@ malta-housing-ai/
 
 * `malta_housing/models.py`: Shared Pydantic contracts (`ScrapedListing`, `MaltaPropertySchema`, `ParsedListing`).
 * `malta_housing/common.py`: Shared HTTP client (session + retry on 429/5xx; optional `curl_cffi` TLS impersonation; SiteGround PoW auto-solve), staging merge I/O, HTML text helpers.
-* `malta_housing/scrapers/*.py`: Portal scrapers (`maltapark`, `ownersbest`, `djar`, `propertymarket`, `yitaku`, `remax`).
+* `malta_housing/scrapers/*.py`: Portal scrapers (`maltapark`, `ownersbest`, `djar`, `propertymarket`, `yitaku`, `remax`, `simonmamo`).
 * `malta_housing/parsing/llm.py`: Ollama extraction with checkpoints; skips URLs already in DB (unless `--force`).
 * `malta_housing/analysis/evaluator.py`: Ollama investment scoring (`investment_score` 0–10, pros, cons, summary) with pre-computed Python metrics (price/m², distance to Gżira, flags).
 * `malta_housing/analysis/ranker.py`: Fetches DB candidates, evaluates unevaluated listings, prints ranked console report.
@@ -145,7 +145,7 @@ malta-housing-ai/
 | `is_shell_form` | `bool` | |
 | `seller_type` | `OWNER \| AGENT \| SENSAR \| UNKNOWN \| null` | |
 | `key_features` | `list[str]` | Max ~4 features |
-| `source` | `maltapark \| ownersbest \| djar \| propertymarket \| yitaku \| remax \| null` | Portal origin |
+| `source` | `maltapark \| ownersbest \| djar \| propertymarket \| yitaku \| remax \| simonmamo \| null` | Portal origin |
 | `scraped_at` | `str \| null` | ISO timestamp from scrape |
 | `updated_at` | `str \| null` | ISO timestamp of last parse/DB write |
 | `distance_to_gzira_km` | `float \| null` | Estimated km to Gżira from `to_gzira.csv` |
