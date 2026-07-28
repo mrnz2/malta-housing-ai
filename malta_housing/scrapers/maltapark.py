@@ -12,16 +12,19 @@ from malta_housing.geo import is_gozo_listing
 from malta_housing.models import ScrapedListing, utc_now_iso
 
 BASE_URL = "https://www.maltapark.com"
-CATEGORY_URL = "https://www.maltapark.com/listings/category/248"
+# Property For Sale (c=248), €100k–€400k — matches Maltapark search filters.
+SEARCH_URL = (
+    "https://www.maltapark.com/search/"
+    "?psrch=1&sortby=&c=248&bedrooms=-1"
+    "&minp=100000&maxp=400000"
+    "&region=-1&search=&haspool=false&excludeagents=false"
+)
 SOURCE = "maltapark"
 
 
 def get_item_links_from_page(client: HttpClient, page_num: int) -> list[str]:
     """Pobiera listę unikalnych linków do ogłoszeń z konkretnej podstrony listy."""
-    if page_num == 1:
-        url = CATEGORY_URL
-    else:
-        url = f"{CATEGORY_URL}?p={page_num}"
+    url = f"{SEARCH_URL}&page={page_num}"
 
     print(f"🔎 Skanowanie strony {page_num}: {url}")
 
