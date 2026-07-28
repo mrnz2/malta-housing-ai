@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from malta_housing.budget import MAX_PRICE_EUR, MIN_PRICE_EUR, is_out_of_budget
 from malta_housing.common import PARSED_PATH, load_json_list, resolve_source
 from malta_housing.distances import distance_to_gzira_km
 from malta_housing.geo import is_gozo_record
@@ -195,6 +196,49 @@ def delete_gozo_listings(db_name: str | Path = DB_PATH) -> dict[str, int]:
     return {"deleted": len(to_delete)}
 
 
+def delete_out_of_budget_listings(
+    db_name: str | Path = DB_PATH,
+    *,
+    min_price_eur: int = MIN_PRICE_EUR,
+    max_price_eur: int = MAX_PRICE_EUR,
+) -> dict[str, int]:
+    """Remove listings priced below min or above max (and their price history)."""
+    if not Path(db_name).exists():
+        print(f"⚠️ Brak bazy {db_name} — nic do usunięcia.")
+        return {"deleted": 0, "below_min": 0, "above_max": 0}
+
+    init_db(db_name)
+    conn = _connect(db_name)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, url, price_eur FROM listings
+        WHERE price_eur IS NOT NULL
+          AND (price_eur < ? OR price_eur > ?)
+        """,
+        (min_price_eur, max_price_eur),
+    )
+    rows = cursor.fetchall()
+    below_min = sum(1 for row in rows if row["price_eur"] < min_price_eur)
+    above_max = sum(1 for row in rows if row["price_eur"] > max_price_eur)
+
+    for row in rows:
+        cursor.execute("DELETE FROM price_history WHERE url = ?", (row["url"],))
+        cursor.execute("DELETE FROM listings WHERE id = ?", (row["id"],))
+
+    conn.commit()
+    conn.close()
+    print(
+        f"🗑️ Usunięto {len(rows)} ofert poza budżetem €{min_price_eur:,}–€{max_price_eur:,} "
+        f"z '{db_name}' (<min: {below_min}, >max: {above_max})."
+    )
+    return {
+        "deleted": len(rows),
+        "below_min": below_min,
+        "above_max": above_max,
+    }
+
+
 def set_listing_hidden(
     listing_id: int, hidden: bool, db_name: str | Path = DB_PATH
 ) -> bool:
@@ -224,11 +268,15 @@ def save_listings_to_db(
     updated = 0
     price_changes = 0
     skipped_gozo = 0
+    skipped_budget = 0
     now = utc_now_iso()
 
     for item in listings:
         if is_gozo_record(item):
             skipped_gozo += 1
+            continue
+        if is_out_of_budget(item):
+            skipped_budget += 1
             continue
 
         url = item["url"]
@@ -330,11 +378,13 @@ def save_listings_to_db(
         "updated": updated,
         "price_changes": price_changes,
         "skipped_gozo": skipped_gozo,
+        "skipped_budget": skipped_budget,
     }
     print(
         f"💾 DB '{db_name}': +{inserted} new, ~{updated} updated, "
         f"{price_changes} price change(s) logged"
         + (f", skipped {skipped_gozo} Gozo" if skipped_gozo else "")
+        + (f", skipped {skipped_budget} out of budget" if skipped_budget else "")
         + "."
     )
     return stats

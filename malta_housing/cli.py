@@ -6,7 +6,12 @@ import argparse
 import sys
 
 from malta_housing.common import configure_stdio, ensure_source
-from malta_housing.db.store import delete_gozo_listings, init_db, load_parsed_and_save
+from malta_housing.db.store import (
+    delete_gozo_listings,
+    delete_out_of_budget_listings,
+    init_db,
+    load_parsed_and_save,
+)
 from malta_housing.parsing.llm import run_parser
 from malta_housing.paths import DB_PATH
 from malta_housing.scrapers.djar import run_djar_scraper
@@ -73,6 +78,25 @@ def cmd_purge_gozo(_args: argparse.Namespace) -> None:
     print(f"✅ Purge complete (DB deleted={stats['deleted']}).")
 
 
+def cmd_purge_budget(_args: argparse.Namespace) -> None:
+    from malta_housing.budget import is_out_of_budget
+    from malta_housing.common import PARSED_PATH, load_json_list, save_json_list
+
+    stats = delete_out_of_budget_listings()
+    items = load_json_list(PARSED_PATH)
+    if items:
+        kept = [item for item in items if not is_out_of_budget(item)]
+        removed = len(items) - len(kept)
+        if removed:
+            save_json_list(PARSED_PATH, kept)
+            print(f"🧹 Usunięto {removed} ofert poza budżetem z {PARSED_PATH.name}.")
+    print(
+        f"✅ Budget purge complete "
+        f"(deleted={stats['deleted']}, below_min={stats['below_min']}, "
+        f"above_max={stats['above_max']})."
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="malta_housing",
@@ -132,6 +156,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Delete Gozo listings from the SQLite database",
     )
     p_purge.set_defaults(func=cmd_purge_gozo)
+
+    p_purge_budget = sub.add_parser(
+        "purge-budget",
+        help="Delete listings priced under €100k or over €400k from SQLite and parsed JSON",
+    )
+    p_purge_budget.set_defaults(func=cmd_purge_budget)
 
     return parser
 

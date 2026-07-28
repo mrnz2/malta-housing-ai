@@ -8,6 +8,7 @@ from typing import Any
 
 import ollama
 
+from malta_housing.budget import is_out_of_budget
 from malta_housing.common import (
     PARSE_FAILURES_PATH,
     PARSED_PATH,
@@ -105,7 +106,7 @@ def run_parser(
     already_parsed = {
         item["url"]: item
         for item in load_json_list(PARSED_PATH)
-        if "url" in item and not is_gozo_record(item)
+        if "url" in item and not is_gozo_record(item) and not is_out_of_budget(item)
     }
     # Backfill distance on checkpoint rows that predate this field
     for url, item in list(already_parsed.items()):
@@ -120,6 +121,7 @@ def run_parser(
     to_process: list[dict[str, Any]] = []
     skipped_known = 0
     skipped_gozo = 0
+    skipped_budget = 0
     for item in raw_listings:
         url = item.get("url")
         if not url:
@@ -162,6 +164,10 @@ def run_parser(
                 skipped_gozo += 1
                 print("   └─ Pominięto (Gozo).")
                 continue
+            if is_out_of_budget(result_dict):
+                skipped_budget += 1
+                print("   └─ Pominięto (poza budżetem).")
+                continue
             results_by_url[item["url"]] = result_dict
             success += 1
             dist = result_dict.get("distance_to_gzira_km")
@@ -196,7 +202,7 @@ def run_parser(
     nulls = _quality_null_counts(all_results)
     print(
         f"\n✅ Gotowe! Sukces w tej sesji: {success}, błędy: {failures}, "
-        f"pominięte Gozo: {skipped_gozo}. "
+        f"pominięte Gozo: {skipped_gozo}, poza budżetem: {skipped_budget}. "
         f"Łącznie w {PARSED_PATH}: {len(all_results)}. "
         f"Nulls — price: {nulls['missing_price_eur']}, locality: {nulls['missing_locality']}."
     )

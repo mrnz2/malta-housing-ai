@@ -2,6 +2,7 @@
 
 from malta_housing.db.store import (
     delete_gozo_listings,
+    delete_out_of_budget_listings,
     get_known_urls,
     init_db,
     load_parsed_and_save,
@@ -11,6 +12,7 @@ from malta_housing.db.store import (
 
 __all__ = [
     "delete_gozo_listings",
+    "delete_out_of_budget_listings",
     "get_known_urls",
     "init_db",
     "load_parsed_and_save",
