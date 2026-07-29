@@ -68,7 +68,7 @@ _LISTING_COLUMNS = """
     id, url, title, price_eur, locality, property_type, bedrooms,
     seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form, ready,
     key_features, source, scraped_at, created_at, updated_at,
-    distance_to_gzira_km, is_hidden, notes,
+    distance_to_gzira_km, is_hidden, is_fav, notes,
     ai_score, ai_summary, ai_evaluated_at, sea_proximity
 """
 
@@ -77,8 +77,9 @@ _LISTING_COLUMNS_QUALIFIED = """
     listings.property_type, listings.bedrooms, listings.seller_type, listings.is_freehold,
     listings.has_airspace, listings.has_sea_view, listings.is_shell_form, listings.ready,
     listings.key_features, listings.source, listings.scraped_at, listings.created_at,
-    listings.updated_at, listings.distance_to_gzira_km, listings.is_hidden, listings.notes,
-    listings.ai_score, listings.ai_summary, listings.ai_evaluated_at, listings.sea_proximity
+    listings.updated_at, listings.distance_to_gzira_km, listings.is_hidden, listings.is_fav,
+    listings.notes, listings.ai_score, listings.ai_summary, listings.ai_evaluated_at,
+    listings.sea_proximity
 """
 
 
@@ -92,10 +93,10 @@ def _row_to_listing(row: sqlite3.Row) -> dict[str, Any]:
             data["key_features"] = []
     elif features is None:
         data["key_features"] = []
-    for flag in ("is_freehold", "has_airspace", "has_sea_view", "is_shell_form", "is_hidden"):
+    for flag in ("is_freehold", "has_airspace", "has_sea_view", "is_shell_form", "is_hidden", "is_fav"):
         if flag in data and data[flag] is not None:
             data[flag] = bool(data[flag])
-        elif flag == "is_hidden":
+        elif flag in ("is_hidden", "is_fav"):
             data[flag] = False
     if "ready" in data and data["ready"] is not None:
         data["ready"] = bool(data["ready"])

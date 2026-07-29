@@ -281,6 +281,42 @@ body {
   white-space: nowrap;
 }
 
+.fav-cell {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.fav-btn {
+  background: none;
+  border: none;
+  padding: 0.15rem 0.35rem;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink-soft);
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.fav-btn:hover {
+  transform: scale(1.12);
+}
+
+.fav-btn.is-fav {
+  color: #d63b4a;
+}
+
+.detail-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.detail-head-actions .fav-btn {
+  font-size: 1.45rem;
+  padding: 0.25rem 0.45rem;
+}
+
 .hide-check {
   cursor: pointer;
 }

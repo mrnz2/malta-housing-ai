@@ -73,6 +73,7 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
         ("ai_summary", "TEXT"),
         ("ai_evaluated_at", "TIMESTAMP"),
         ("ready", "BOOLEAN"),
+        ("is_fav", "BOOLEAN DEFAULT 0"),
     ):
         _ensure_column(cursor, "listings", column, col_def)
 
@@ -323,6 +324,23 @@ def set_listing_hidden(
     cur.execute(
         "UPDATE listings SET is_hidden = ? WHERE id = ?",
         (1 if hidden else 0, listing_id),
+    )
+    updated = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return updated
+
+
+def set_listing_fav(
+    listing_id: int, fav: bool, db_name: str | Path = DB_PATH
+) -> bool:
+    """Set is_fav for a listing by id. Returns False if the id was not found."""
+    init_db(db_name)
+    conn = _connect(db_name)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE listings SET is_fav = ? WHERE id = ?",
+        (1 if fav else 0, listing_id),
     )
     updated = cur.rowcount > 0
     conn.commit()

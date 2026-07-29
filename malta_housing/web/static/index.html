@@ -120,6 +120,7 @@
               <th>Beds</th>
               <th>Source</th>
               <th>Ready</th>
+              <th>Fav</th>
               <th>Hide</th>
             </tr>
           </thead>
@@ -141,7 +142,10 @@
           <p class="detail-kicker" id="detail-kicker"></p>
           <h2 id="detail-title"></h2>
         </div>
-        <button type="button" class="btn ghost" id="detail-close" aria-label="Close">Close</button>
+        <div class="detail-head-actions">
+          <button type="button" class="fav-btn" id="detail-fav" aria-label="Favorite" aria-pressed="false">♡</button>
+          <button type="button" class="btn ghost" id="detail-close" aria-label="Close">Close</button>
+        </div>
       </header>
       <p class="detail-price" id="detail-price"></p>
       <section class="detail-evaluation" id="detail-evaluation" hidden>

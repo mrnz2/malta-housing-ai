@@ -26,6 +26,7 @@ const els = {
   type: document.getElementById("filter-type"),
   dialog: document.getElementById("detail-dialog"),
   close: document.getElementById("detail-close"),
+  detailFav: document.getElementById("detail-fav"),
   detailHidden: document.getElementById("detail-hidden"),
   detailNotes: document.getElementById("detail-notes"),
   detailNotesSave: document.getElementById("detail-notes-save"),
@@ -209,7 +210,18 @@ function scoreClass(value) {
   return "score-low";
 }
 
-const TABLE_COLS = 10;
+const TABLE_COLS = 11;
+
+function favIcon(isFav) {
+  return isFav ? "♥" : "♡";
+}
+
+function syncFavButton(btn, isFav) {
+  if (!btn) return;
+  btn.textContent = favIcon(isFav);
+  btn.classList.toggle("is-fav", Boolean(isFav));
+  btn.setAttribute("aria-pressed", String(Boolean(isFav)));
+}
 
 function renderNotesRow(id, notesText) {
   const tr = document.createElement("tr");
@@ -256,6 +268,9 @@ function renderRows(items) {
       <td>${item.bedrooms ?? "—"}</td>
       <td>${escapeHtml(item.source || "—")}</td>
       <td class="ready-cell"><span class="ready-badge ${readyClass(item.ready)}">${formatReady(item.ready)}</span></td>
+      <td class="fav-cell">
+        <button type="button" class="fav-btn ${item.is_fav ? "is-fav" : ""}" data-id="${item.id}" aria-label="Favorite" aria-pressed="${item.is_fav ? "true" : "false"}">${favIcon(item.is_fav)}</button>
+      </td>
       <td class="hide-cell">
         <label class="check hide-check" title="Hide">
           <input type="checkbox" class="hide-toggle" data-id="${item.id}" ${item.is_hidden ? "checked" : ""} />
@@ -272,7 +287,13 @@ function renderRows(items) {
     });
     const hideToggle = tr.querySelector(".hide-toggle");
     const hideCheck = tr.querySelector(".hide-check");
+    const favBtn = tr.querySelector(".fav-btn");
     hideCheck.addEventListener("click", (e) => e.stopPropagation());
+    favBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const current = favBtn.classList.contains("is-fav");
+      setFav(item.id, !current);
+    });
     hideToggle.addEventListener("change", () => {
       setHidden(item.id, hideToggle.checked);
     });
@@ -283,6 +304,32 @@ function renderRows(items) {
       els.body.appendChild(notesRow);
     }
   }
+}
+
+async function setFav(id, fav) {
+  const res = await fetch(`/api/listings/${id}/fav`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fav: Boolean(fav) }),
+  });
+  if (!res.ok) {
+    await loadListings();
+    return;
+  }
+  const listing = await res.json();
+  const actualFav = Boolean(listing.is_fav);
+  updateFavCell(id, actualFav);
+  if (els.detailFav && els.dialog.open && Number(els.dialog.dataset.listingId) === id) {
+    syncFavButton(els.detailFav, actualFav);
+  }
+  return actualFav;
+}
+
+function updateFavCell(id, fav) {
+  const row = els.body.querySelector(`tr[data-id="${id}"]`);
+  if (!row) return;
+  const btn = row.querySelector(".fav-btn");
+  syncFavButton(btn, fav);
 }
 
 async function setHidden(id, hidden) {
@@ -477,6 +524,15 @@ async function openDetail(id) {
   const link = document.getElementById("detail-url");
   link.href = listing.url || "#";
   link.hidden = !listing.url;
+
+  els.dialog.dataset.listingId = String(listing.id);
+  syncFavButton(els.detailFav, listing.is_fav);
+  els.detailFav.onclick = async (e) => {
+    e.stopPropagation();
+    const next = !listing.is_fav;
+    const actualFav = await setFav(listing.id, next);
+    if (actualFav != null) listing.is_fav = actualFav;
+  };
 
   els.detailHidden.checked = Boolean(listing.is_hidden);
   els.detailReady.value = readySelectValue(listing.ready);
