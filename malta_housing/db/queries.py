@@ -25,6 +25,24 @@ _EMPTY_STATS: dict[str, Any] = {
     "property_types": [],
 }
 
+# Earliest calendar day from scraped_at / created_at (matches _first_seen_day).
+_FIRST_SEEN_DAY_SQL = """
+CASE
+  WHEN scraped_at IS NOT NULL AND created_at IS NOT NULL THEN
+    CASE
+      WHEN substr(scraped_at, 1, 10) < substr(created_at, 1, 10)
+      THEN substr(scraped_at, 1, 10)
+      ELSE substr(created_at, 1, 10)
+    END
+  WHEN scraped_at IS NOT NULL THEN substr(scraped_at, 1, 10)
+  WHEN created_at IS NOT NULL THEN substr(created_at, 1, 10)
+  ELSE NULL
+END
+""".strip()
+
+# New listings first (UTC today), then by score within each group.
+_NEW_FIRST_SQL = f"CASE WHEN ({_FIRST_SEEN_DAY_SQL}) = date('now') THEN 0 ELSE 1 END"
+
 _ORDER_SQL = {
     "created_desc": "CASE WHEN created_at IS NULL THEN 1 ELSE 0 END, created_at DESC, id DESC",
     "created_asc": "CASE WHEN created_at IS NULL THEN 1 ELSE 0 END, created_at ASC, id ASC",
@@ -36,8 +54,14 @@ _ORDER_SQL = {
     "title_asc": "title COLLATE NOCASE ASC, id DESC",
     "gzira_asc": "CASE WHEN distance_to_gzira_km IS NULL THEN 1 ELSE 0 END, distance_to_gzira_km ASC, id DESC",
     "gzira_desc": "CASE WHEN distance_to_gzira_km IS NULL THEN 1 ELSE 0 END, distance_to_gzira_km DESC, id DESC",
-    "ai_score_desc": "CASE WHEN ai_score IS NULL THEN 1 ELSE 0 END, ai_score DESC, id DESC",
-    "ai_score_asc": "CASE WHEN ai_score IS NULL THEN 1 ELSE 0 END, ai_score ASC, id DESC",
+    "ai_score_desc": (
+        f"{_NEW_FIRST_SQL}, CASE WHEN ai_score IS NULL THEN 1 ELSE 0 END, "
+        "ai_score DESC, id DESC"
+    ),
+    "ai_score_asc": (
+        f"{_NEW_FIRST_SQL}, CASE WHEN ai_score IS NULL THEN 1 ELSE 0 END, "
+        "ai_score ASC, id DESC"
+    ),
 }
 
 _LISTING_COLUMNS = """
