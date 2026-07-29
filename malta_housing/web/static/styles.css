@@ -294,6 +294,35 @@ body {
   margin: 0 0 1rem;
 }
 
+.detail-ready-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  max-width: 12rem;
+}
+
+.detail-ready-field span {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.detail-ready-field select {
+  font: 600 0.95rem var(--font-body);
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.75rem;
+}
+
+.detail-ready-field select:focus {
+  outline: 2px solid rgba(10, 107, 120, 0.35);
+  border-color: var(--sea);
+}
+
 .detail-notes-field {
   display: flex;
   flex-direction: column;

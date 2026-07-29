@@ -348,6 +348,23 @@ def set_listing_notes(
     return updated
 
 
+def set_listing_ready(
+    listing_id: int, ready: bool | None, db_name: str | Path = DB_PATH
+) -> bool:
+    """Set ready for a listing by id. None clears the value. Returns False if missing."""
+    init_db(db_name)
+    conn = _connect(db_name)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE listings SET ready = ? WHERE id = ?",
+        (ready, listing_id),
+    )
+    updated = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return updated
+
+
 def save_listings_to_db(
     listings: list[dict[str, Any]], db_name: str | Path = DB_PATH
 ) -> dict[str, int]:

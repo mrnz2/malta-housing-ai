@@ -30,6 +30,7 @@ const els = {
   detailNotes: document.getElementById("detail-notes"),
   detailNotesSave: document.getElementById("detail-notes-save"),
   detailNotesStatus: document.getElementById("detail-notes-status"),
+  detailReady: document.getElementById("detail-ready"),
 };
 
 function euro(value) {
@@ -122,7 +123,19 @@ function flagsFor(item) {
 function formatReady(value) {
   if (value === true) return "Yes";
   if (value === false) return "No";
-  return "—";
+  return "?";
+}
+
+function readySelectValue(value) {
+  if (value === true) return "true";
+  if (value === false) return "false";
+  return "unknown";
+}
+
+function readyFromSelect(value) {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
 }
 
 function readyClass(value) {
@@ -296,6 +309,27 @@ async function setHidden(id, hidden) {
   }
 }
 
+function updateReadyCell(id, ready) {
+  const row = els.body.querySelector(`tr[data-id="${id}"]`);
+  if (!row) return;
+  const badge = row.querySelector(".ready-badge");
+  if (!badge) return;
+  badge.textContent = formatReady(ready);
+  badge.className = `ready-badge ${readyClass(ready)}`;
+}
+
+async function setReady(id, ready) {
+  const res = await fetch(`/api/listings/${id}/ready`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ready }),
+  });
+  if (!res.ok) return null;
+  const listing = await res.json();
+  updateReadyCell(id, listing.ready);
+  return listing;
+}
+
 async function saveNotes(id, notes) {
   const res = await fetch(`/api/listings/${id}/notes`, {
     method: "POST",
@@ -416,10 +450,6 @@ async function openDetail(id) {
     ["Airspace", listing.has_airspace ? "Yes" : "No"],
     ["Sea view", listing.has_sea_view ? "Yes" : "No"],
     ["Shell form", listing.is_shell_form ? "Yes" : "No"],
-    [
-      "Ready to move in",
-      listing.ready === true ? "Yes" : listing.ready === false ? "No" : "Unknown",
-    ],
     ["AI evaluated", formatDate(listing.ai_evaluated_at)],
     ["Scraped", formatDate(listing.scraped_at)],
     ["Updated", formatDate(listing.updated_at)],
@@ -449,6 +479,11 @@ async function openDetail(id) {
   link.hidden = !listing.url;
 
   els.detailHidden.checked = Boolean(listing.is_hidden);
+  els.detailReady.value = readySelectValue(listing.ready);
+  els.detailReady.onchange = async () => {
+    const updated = await setReady(listing.id, readyFromSelect(els.detailReady.value));
+    if (updated) listing.ready = updated.ready;
+  };
   els.detailHidden.onchange = async () => {
     await setHidden(listing.id, els.detailHidden.checked);
     if (

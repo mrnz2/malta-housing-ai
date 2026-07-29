@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from malta_housing.common import configure_stdio
 from malta_housing.db import queries
-from malta_housing.db.store import init_db, set_listing_hidden, set_listing_notes
+from malta_housing.db.store import init_db, set_listing_hidden, set_listing_notes, set_listing_ready
 from malta_housing.paths import DB_PATH, PACKAGE_ROOT
 
 STATIC_DIR = PACKAGE_ROOT / "web" / "static"
@@ -125,6 +125,30 @@ class BrowseHandler(BaseHTTPRequestHandler):
                 return
             listing = queries.get_listing(listing_id)
             self._send(*_json_bytes(listing or {"id": listing_id, "is_hidden": hidden}))
+            return
+
+        match_ready = re.fullmatch(r"/api/listings/(\d+)/ready", path)
+        if match_ready:
+            listing_id = int(match_ready.group(1))
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                body = json.loads(raw.decode("utf-8") or "{}")
+            except json.JSONDecodeError:
+                self._send(*_json_bytes({"error": "Invalid JSON"}, 400))
+                return
+            if "ready" not in body:
+                self._send(*_json_bytes({"error": "Missing 'ready'"}, 400))
+                return
+            ready = body["ready"]
+            if ready is not None and not isinstance(ready, bool):
+                self._send(*_json_bytes({"error": "'ready' must be a boolean or null"}, 400))
+                return
+            if not set_listing_ready(listing_id, ready):
+                self._send(*_json_bytes({"error": "Listing not found"}, 404))
+                return
+            listing = queries.get_listing(listing_id)
+            self._send(*_json_bytes(listing or {"id": listing_id, "ready": ready}))
             return
 
         match_notes = re.fullmatch(r"/api/listings/(\d+)/notes", path)
