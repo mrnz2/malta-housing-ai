@@ -11,7 +11,14 @@ from malta_housing.distances import SeaProximity
 
 SellerType = Literal["OWNER", "AGENT", "SENSAR", "UNKNOWN"]
 SourceType = Literal[
-    "maltapark", "ownersbest", "djar", "propertymarket", "yitaku", "remax", "simonmamo"
+    "maltapark",
+    "ownersbest",
+    "djar",
+    "propertymarket",
+    "yitaku",
+    "remax",
+    "simonmamo",
+    "belair",
 ]
 
 
