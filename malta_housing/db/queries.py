@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -94,12 +95,15 @@ def get_latest_scrape_day(db_name: str | Path = DB_PATH) -> str | None:
         conn.close()
 
 
-def _annotate_is_new(items: list[dict[str, Any]], latest_day: str | None) -> None:
-    if not latest_day:
-        return
+def _utc_today_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _annotate_is_new(items: list[dict[str, Any]]) -> None:
+    today = _utc_today_str()
     for item in items:
-        scraped_at = item.get("scraped_at")
-        item["is_new"] = bool(scraped_at and str(scraped_at)[:10] == latest_day)
+        created_at = item.get("created_at")
+        item["is_new"] = bool(created_at and str(created_at)[:10] == today)
 
 
 _VISIBLE = "(is_hidden = 0 OR is_hidden IS NULL)"
@@ -270,7 +274,6 @@ def list_listings(
         cur.execute(f"SELECT COUNT(*) AS n FROM listings {where_sql}", params)
         total = cur.fetchone()["n"]
 
-        latest_day = _latest_scrape_day(cur)
         cur.execute(
             f"""
             SELECT
@@ -283,7 +286,7 @@ def list_listings(
             [*params, limit, offset],
         )
         items = [_row_to_listing(row) for row in cur.fetchall()]
-        _annotate_is_new(items, latest_day)
+        _annotate_is_new(items)
     except sqlite3.OperationalError:
         conn.close()
         return {"total": 0, "items": [], "limit": limit, "offset": offset}
@@ -310,7 +313,6 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
             (listing_id,),
         )
         row = cur.fetchone()
-        latest_day = _latest_scrape_day(cur)
     except sqlite3.OperationalError:
         conn.close()
         return None
@@ -318,7 +320,7 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
     if not row:
         return None
     listing = _enrich_with_evaluation(_row_to_listing(row))
-    _annotate_is_new([listing], latest_day)
+    _annotate_is_new([listing])
     return listing
 
 
