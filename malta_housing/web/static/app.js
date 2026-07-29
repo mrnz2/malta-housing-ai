@@ -116,9 +116,19 @@ function flagsFor(item) {
   if (item.has_airspace) bits.push("Airspace");
   if (item.has_sea_view) bits.push("Sea view");
   if (item.is_shell_form) bits.push("Shell");
-  if (item.ready === true) bits.push("Ready");
-  else if (item.ready === false) bits.push("Not ready");
   return bits;
+}
+
+function formatReady(value) {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return "—";
+}
+
+function readyClass(value) {
+  if (value === true) return "ready-yes";
+  if (value === false) return "ready-no";
+  return "ready-unknown";
 }
 
 function formatKm(value) {
@@ -186,7 +196,7 @@ function scoreClass(value) {
   return "score-low";
 }
 
-const TABLE_COLS = 9;
+const TABLE_COLS = 10;
 
 function renderNotesRow(id, notesText) {
   const tr = document.createElement("tr");
@@ -232,6 +242,7 @@ function renderRows(items) {
       <td class="price">${euro(item.price_eur)}</td>
       <td>${item.bedrooms ?? "—"}</td>
       <td>${escapeHtml(item.source || "—")}</td>
+      <td class="ready-cell"><span class="ready-badge ${readyClass(item.ready)}">${formatReady(item.ready)}</span></td>
       <td class="hide-cell">
         <label class="check hide-check" title="Hide">
           <input type="checkbox" class="hide-toggle" data-id="${item.id}" ${item.is_hidden ? "checked" : ""} />

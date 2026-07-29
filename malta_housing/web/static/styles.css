@@ -400,6 +400,35 @@ body {
   vertical-align: 0.1em;
 }
 
+.ready-cell {
+  white-space: nowrap;
+}
+
+.ready-badge {
+  display: inline-block;
+  min-width: 2rem;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  border-radius: 0.25rem;
+}
+
+.ready-yes {
+  color: #0d5c3d;
+  background: #d4f0e4;
+}
+
+.ready-no {
+  color: #7a2e2e;
+  background: #f5e0e0;
+}
+
+.ready-unknown {
+  color: var(--muted);
+  background: transparent;
+}
+
 .empty {
   padding: 2.5rem 1.25rem;
   text-align: center;
