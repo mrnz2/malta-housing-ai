@@ -99,11 +99,24 @@ def _utc_today_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
+def _date_prefix(value: Any) -> str | None:
+    if not value:
+        return None
+    return str(value)[:10]
+
+
+def _first_seen_day(item: dict[str, Any]) -> str | None:
+    """Earliest calendar day the listing was scraped or first persisted."""
+    days = [_date_prefix(item.get(key)) for key in ("scraped_at", "created_at")]
+    days = [day for day in days if day]
+    return min(days) if days else None
+
+
 def _annotate_is_new(items: list[dict[str, Any]]) -> None:
     today = _utc_today_str()
     for item in items:
-        created_at = item.get("created_at")
-        item["is_new"] = bool(created_at and str(created_at)[:10] == today)
+        first_day = _first_seen_day(item)
+        item["is_new"] = first_day == today
 
 
 _VISIBLE = "(is_hidden = 0 OR is_hidden IS NULL)"
