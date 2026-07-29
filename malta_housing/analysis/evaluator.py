@@ -67,6 +67,7 @@ def _compute_metrics(listing: ParsedListing, raw_text: str) -> dict[str, Any]:
         "has_airspace": listing.has_airspace,
         "has_sea_view": listing.has_sea_view,
         "is_shell_form": listing.is_shell_form,
+        "ready": listing.ready,
         "key_features": listing.key_features,
     }
 

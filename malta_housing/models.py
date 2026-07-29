@@ -63,6 +63,14 @@ class MaltaPropertySchema(BaseModel):
     is_shell_form: bool = Field(
         default=False, description="True tylko jeśli Level of Finish to Shell"
     )
+    ready: Optional[bool] = Field(
+        default=None,
+        description=(
+            "True jeśli mieszkanie jest gotowe do zamieszkania (umeblowane, wykończone, "
+            "move-in ready). False jeśli wymaga remontu, jest w stanie shell lub niewykończone. "
+            "Null jeśli brak informacji w tekście."
+        ),
+    )
     key_features: list[str] = Field(
         default_factory=list, description="Max 4 najważniejsze atuty nieruchomości"
     )

@@ -46,6 +46,10 @@ def parse_with_llm(raw_listing: dict) -> MaltaPropertySchema:
     - locality: Tylko miejscowość na Malcie (wyspa główna). Jeśli oferta jest na Gozo, i tak wpisz nazwę miejscowości (np. "Xewkija (Gozo)") — filtr Gozo działa osobno.
     - seller_type: Jeśli widzisz "OWNER" wpisz "OWNER". Jeśli "AGENT" lub nazwy agencji (np. ReMax) wpisz "AGENT". Jeśli "BROKER (SENSAR)" wpisz "SENSAR".
     - Wartości boolean (is_freehold, has_airspace, has_sea_view, is_shell_form) MUSZĄ być ustawione na true lub false (NIGDY null).
+    - ready: true jeśli mieszkanie jest gotowe do zamieszkania (np. "ready to move in", "fully finished",
+      "furnished", "habitable", wykończone). false jeśli wymaga remontu, jest shell/unfinished,
+      "needs renovation", "off-plan", "under construction". null jeśli tekst nie mówi o stanie wykończenia.
+      Jeśli is_shell_form=true, ready powinno być false.
 
     SUROWY TEKST OGŁOSZENIA:
     ---
@@ -66,6 +70,7 @@ def parse_with_llm(raw_listing: dict) -> MaltaPropertySchema:
         "has_airspace": false,
         "has_sea_view": true,
         "is_shell_form": false,
+        "ready": true,
         "key_features": ["cecha 1", "cecha 2"]
     }}
     """
@@ -187,7 +192,8 @@ def run_parser(
             print(
                 f"   └─ Sukces! Cena: €{parsed_data.price_eur}, "
                 f"Sprzedawca: {parsed_data.seller_type}, "
-                f"Freehold: {parsed_data.is_freehold}, Airspace: {parsed_data.has_airspace}"
+                f"Freehold: {parsed_data.is_freehold}, Airspace: {parsed_data.has_airspace}, "
+                f"Ready: {parsed_data.ready}"
                 f"{dist_txt}{sea_txt}"
             )
         except Exception as e:

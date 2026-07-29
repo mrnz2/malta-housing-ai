@@ -49,6 +49,7 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
             has_airspace BOOLEAN,
             has_sea_view BOOLEAN,
             is_shell_form BOOLEAN,
+            ready BOOLEAN,
             key_features TEXT,
             source TEXT,
             scraped_at TIMESTAMP,
@@ -71,6 +72,7 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
         ("ai_score", "REAL"),
         ("ai_summary", "TEXT"),
         ("ai_evaluated_at", "TIMESTAMP"),
+        ("ready", "BOOLEAN"),
     ):
         _ensure_column(cursor, "listings", column, col_def)
 
@@ -387,6 +389,10 @@ def save_listings_to_db(
         cursor.execute("SELECT price_eur, title FROM listings WHERE url = ?", (url,))
         existing = cursor.fetchone()
 
+        ready = item.get("ready")
+        if ready is not None:
+            ready = bool(ready)
+
         values = (
             item.get("title"),
             item.get("price_eur"),
@@ -398,6 +404,7 @@ def save_listings_to_db(
             item.get("has_airspace", False),
             item.get("has_sea_view", False),
             item.get("is_shell_form", False),
+            ready,
             key_features,
             source,
             item.get("scraped_at"),
@@ -413,9 +420,9 @@ def save_listings_to_db(
                 INSERT INTO listings (
                     title, price_eur, locality, property_type,
                     bedrooms, seller_type, is_freehold, has_airspace,
-                    has_sea_view, is_shell_form, key_features, source,
+                    has_sea_view, is_shell_form, ready, key_features, source,
                     scraped_at, updated_at, distance_to_gzira_km, sea_proximity, url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 values,
             )
@@ -454,6 +461,7 @@ def save_listings_to_db(
                     has_airspace = ?,
                     has_sea_view = ?,
                     is_shell_form = ?,
+                    ready = ?,
                     key_features = ?,
                     source = COALESCE(?, NULLIF(TRIM(source), '')),
                     scraped_at = COALESCE(?, scraped_at),

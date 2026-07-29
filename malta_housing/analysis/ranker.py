@@ -41,6 +41,7 @@ def _listing_to_parsed(row: dict[str, Any]) -> ParsedListing:
         "has_airspace",
         "has_sea_view",
         "is_shell_form",
+        "ready",
         "key_features",
         "source",
         "scraped_at",

@@ -116,6 +116,8 @@ function flagsFor(item) {
   if (item.has_airspace) bits.push("Airspace");
   if (item.has_sea_view) bits.push("Sea view");
   if (item.is_shell_form) bits.push("Shell");
+  if (item.ready === true) bits.push("Ready");
+  else if (item.ready === false) bits.push("Not ready");
   return bits;
 }
 
@@ -403,6 +405,10 @@ async function openDetail(id) {
     ["Airspace", listing.has_airspace ? "Yes" : "No"],
     ["Sea view", listing.has_sea_view ? "Yes" : "No"],
     ["Shell form", listing.is_shell_form ? "Yes" : "No"],
+    [
+      "Ready to move in",
+      listing.ready === true ? "Yes" : listing.ready === false ? "No" : "Unknown",
+    ],
     ["AI evaluated", formatDate(listing.ai_evaluated_at)],
     ["Scraped", formatDate(listing.scraped_at)],
     ["Updated", formatDate(listing.updated_at)],
