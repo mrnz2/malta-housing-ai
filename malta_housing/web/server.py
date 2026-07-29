@@ -78,6 +78,7 @@ class BrowseHandler(BaseHTTPRequestHandler):
                 freehold=_parse_bool(qs.get("freehold")),
                 airspace=_parse_bool(qs.get("airspace")),
                 show_hidden=_parse_bool(qs.get("show_hidden")) is True,
+                fav_only=_parse_bool(qs.get("fav_only")) is True,
                 sort=(qs.get("sort") or ["ai_score_desc"])[0],
                 limit=_parse_int(qs.get("limit")) or 100,
                 offset=_parse_int(qs.get("offset")) or 0,

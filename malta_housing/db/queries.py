@@ -260,6 +260,7 @@ def list_listings(
     freehold: bool | None = None,
     airspace: bool | None = None,
     show_hidden: bool = False,
+    fav_only: bool = False,
     sort: str = "created_desc",
     limit: int = 100,
     offset: int = 0,
@@ -302,6 +303,8 @@ def list_listings(
         where.append("is_freehold = 1")
     if airspace is True:
         where.append("has_airspace = 1")
+    if fav_only:
+        where.append("is_fav = 1")
 
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
     order_sql = _ORDER_SQL.get(sort, _ORDER_SQL["created_desc"])
