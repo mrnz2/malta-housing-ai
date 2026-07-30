@@ -140,6 +140,10 @@ class HttpClient:
             self.session = requests.Session()
         self.session.headers.update(headers or DEFAULT_HEADERS)
 
+    def clear_cookies(self) -> None:
+        """Drop session cookies (e.g. before a fresh SiteGround PoW)."""
+        self.session.cookies.clear()
+
     def get(self, url: str, *, referer: str | None = None) -> requests.Response:
         last_error: Exception | None = None
         req_headers = {"Referer": referer} if referer else None
