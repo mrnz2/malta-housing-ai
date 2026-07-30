@@ -24,6 +24,9 @@ SEARCH_URL = f"{BASE_URL}/for-sale/"
 _PRICE_FILTER = "mnp=15&mxp=19"
 SOURCE = "propertymarket"
 
+_LISTING_PRICE_EUR_RE = re.compile(r"€\s*([\d,]+)")
+_PRICE_HEADER_RE = re.compile(r"^Price:\s*(.+)$", re.M | re.I)
+
 # SiteGround WAF allows ~2 listing index pages per auth cookie. Beyond that we rotate
 # sort order (new search) and start a fresh session with a cooldown.
 MAX_PAGES_PER_SESSION = 2
@@ -158,6 +161,81 @@ def _fetch_listing_index(
     return links, soup, url
 
 
+def _parse_eur_amount(text: str) -> int | None:
+    match = _LISTING_PRICE_EUR_RE.search(text)
+    if not match:
+        return None
+    try:
+        return int(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _listing_price_text(soup: BeautifulSoup) -> str | None:
+    price_el = soup.select_one("#myListingDetailsPrice")
+    if not price_el:
+        return None
+    text = price_el.get_text(" ", strip=True)
+    return text or None
+
+
+def listing_price_eur_from_html(html: str) -> int | None:
+    """Read listing price from #myListingDetailsPrice (Property Market detail pages)."""
+    soup = BeautifulSoup(html, "html.parser")
+    price_text = _listing_price_text(soup)
+    if not price_text:
+        return None
+    return _parse_eur_amount(price_text)
+
+
+def listing_price_eur_from_raw_text(raw_text: str) -> int | None:
+    """Read price from a leading 'Price: …' line added by parse_propertymarket_html."""
+    for line in raw_text.splitlines():
+        match = _PRICE_HEADER_RE.match(line.strip())
+        if match:
+            return _parse_eur_amount(match.group(1))
+    return None
+
+
+def apply_propertymarket_price_correction(
+    parsed: dict,
+    raw_text: str,
+    *,
+    html: str | None = None,
+) -> dict:
+    """Override LLM price with the portal's explicit listing price when available."""
+    price = listing_price_eur_from_html(html) if html else None
+    if price is None:
+        price = listing_price_eur_from_raw_text(raw_text)
+    if price is None:
+        return parsed
+    updated = dict(parsed)
+    updated["price_eur"] = price
+    return updated
+
+
+def _strip_listing_noise(soup: BeautifulSoup) -> None:
+    """Remove mortgage calculator, sponsored blocks, and similar non-listing content."""
+    for element in soup.find_all(
+        True,
+        id=lambda value: value and "mortgage" in str(value).lower(),
+    ):
+        element.decompose()
+    for element in soup.find_all(
+        True,
+        class_=lambda value: bool(value)
+        and any(
+            token in " ".join(value if isinstance(value, list) else [value]).lower()
+            for token in ("mortgage", "sponsored", "advert", "adsbygoogle")
+        ),
+    ):
+        element.decompose()
+    for text_node in soup.find_all(string=re.compile(r"Mortgage Calculator|Sponsored", re.I)):
+        parent = text_node.find_parent(["div", "section", "aside", "form"])
+        if parent is not None:
+            parent.decompose()
+
+
 def _meta_lines(soup: BeautifulSoup) -> list[str]:
     lines: list[str] = []
     for tag in soup.find_all("meta"):
@@ -185,31 +263,47 @@ def _main_content_text(main: BeautifulSoup) -> str:
 def parse_propertymarket_html(html: str, url: str) -> ScrapedListing:
     """Extract a staging listing from Property Market detail page HTML."""
     soup = BeautifulSoup(html, "html.parser")
+    _strip_listing_noise(soup)
+
     main = soup.find("main")
-    meta_text = "\n".join(_meta_lines(soup))
-    main_text = _main_content_text(main) if main else ""
 
-    parts = [part for part in (meta_text, main_text) if part]
-    raw_text = "\n\n".join(parts)
+    # Price and title live inside <header> within <main>; read them before
+    # _main_content_text() strips header nodes from the tree.
+    price_text = _listing_price_text(soup)
 
-    title_tag = None
-    if main:
+    title_tag = soup.select_one("#myListingDetailsTitle h1")
+    if not title_tag and main:
         title_tag = main.select_one("#myListingDetailsTitle h1") or main.find("h1")
-    if not title_tag:
+    if title_tag:
+        title = title_tag.get_text(strip=True)
+    else:
         og_title = soup.find("meta", property="og:title")
         if og_title and og_title.get("content"):
-            title = og_title["content"].strip()
+            title = str(og_title["content"]).strip()
         else:
-            title_tag = soup.find("title")
-            title = title_tag.get_text(strip=True) if title_tag else "Brak tytułu"
-    else:
-        title = title_tag.get_text(strip=True)
-
-    if not raw_text:
-        title, raw_text = extract_title_and_text(html)
+            page_title = soup.find("title")
+            title = page_title.get_text(strip=True) if page_title else "Brak tytułu"
 
     if title == "Brak tytułu":
         title = "Property Market Listing"
+
+    meta_text = "\n".join(_meta_lines(soup))
+    main_text = _main_content_text(main) if main else ""
+
+    header_lines = [
+        f"Title: {title}",
+        f"URL: {url}",
+    ]
+    if price_text:
+        header_lines.append(f"Price: {price_text}")
+
+    parts = [part for part in ("\n".join(header_lines), meta_text, main_text) if part]
+    raw_text = "\n\n".join(parts)
+
+    if not raw_text.strip():
+        title, raw_text = extract_title_and_text(html)
+        if price_text:
+            raw_text = f"Price: {price_text}\n\n{raw_text}"
 
     return ScrapedListing(
         url=url,

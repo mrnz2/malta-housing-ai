@@ -22,6 +22,7 @@ from malta_housing.db.store import get_known_urls
 from malta_housing.distances import distance_to_gzira_km, sea_proximity_for
 from malta_housing.geo import is_gozo_record
 from malta_housing.models import MaltaPropertySchema, ParsedListing, utc_now_iso
+from malta_housing.scrapers.propertymarket import apply_propertymarket_price_correction
 
 CHECKPOINT_EVERY = 5
 LLM_RETRIES = 3
@@ -100,7 +101,12 @@ def _quality_null_counts(items: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
-def parse_staged_item(item: dict[str, Any], *, force: bool = True) -> dict[str, Any]:
+def parse_staged_item(
+    item: dict[str, Any],
+    *,
+    force: bool = True,
+    html: str | None = None,
+) -> dict[str, Any]:
     """Parse one staged listing with LLM and merge into parsed_listings.json."""
     if not force and item.get("url"):
         known = get_known_urls()
@@ -114,16 +120,23 @@ def parse_staged_item(item: dict[str, Any], *, force: bool = True) -> dict[str, 
                 return existing[item["url"]]
 
     parsed_data = parse_with_llm(item)
+    source = resolve_source(item.get("source"), item["url"])
     result = ParsedListing(
         **parsed_data.model_dump(),
         url=item["url"],
-        source=resolve_source(item.get("source"), item["url"]),
+        source=source,
         scraped_at=item.get("scraped_at"),
         updated_at=utc_now_iso(),
         distance_to_gzira_km=distance_to_gzira_km(parsed_data.locality),
         sea_proximity=sea_proximity_for(parsed_data.locality),
     )
     result_dict = result.model_dump()
+    if source == "propertymarket":
+        result_dict = apply_propertymarket_price_correction(
+            result_dict,
+            item.get("raw_text", ""),
+            html=html,
+        )
 
     results_by_url = {
         row["url"]: row for row in load_json_list(PARSED_PATH) if "url" in row
@@ -210,6 +223,12 @@ def run_parser(
                 sea_proximity=sea_proximity_for(parsed_data.locality),
             )
             result_dict = result.model_dump()
+            source = resolve_source(item.get("source"), item["url"])
+            if source == "propertymarket":
+                result_dict = apply_propertymarket_price_correction(
+                    result_dict,
+                    item.get("raw_text", ""),
+                )
             if is_gozo_record(result_dict):
                 skipped_gozo += 1
                 print("   └─ Pominięto (Gozo).")
@@ -225,10 +244,10 @@ def run_parser(
             sea = result_dict.get("sea_proximity")
             sea_txt = f", morze: {sea}" if sea else ""
             print(
-                f"   └─ Sukces! Cena: €{parsed_data.price_eur}, "
-                f"Sprzedawca: {parsed_data.seller_type}, "
-                f"Freehold: {parsed_data.is_freehold}, Airspace: {parsed_data.has_airspace}, "
-                f"Ready: {parsed_data.ready}"
+                f"   └─ Sukces! Cena: €{result_dict.get('price_eur')}, "
+                f"Sprzedawca: {result_dict.get('seller_type')}, "
+                f"Freehold: {result_dict.get('is_freehold')}, Airspace: {result_dict.get('has_airspace')}, "
+                f"Ready: {result_dict.get('ready')}"
                 f"{dist_txt}{sea_txt}"
             )
         except Exception as e:

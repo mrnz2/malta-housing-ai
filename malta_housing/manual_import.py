@@ -250,7 +250,7 @@ def run_manual_pipeline(
     staged_item = scraped.model_dump()
 
     step("parsing", "Parsing with Ollama…")
-    parsed_dict = parse_staged_item(staged_item, force=True)
+    parsed_dict = parse_staged_item(staged_item, force=True, html=html)
 
     if is_gozo_record(parsed_dict):
         return {
