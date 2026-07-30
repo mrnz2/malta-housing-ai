@@ -105,7 +105,10 @@
 
     <section class="results" aria-live="polite">
       <div class="results-bar">
-        <h1 class="results-title">Listings</h1>
+        <div class="results-bar-head">
+          <h1 class="results-title">Listings</h1>
+          <button type="button" class="btn icon-btn" id="import-open" aria-label="Import listing HTML">+</button>
+        </div>
         <p class="results-count" id="results-count">Loading…</p>
       </div>
       <div class="table-wrap">
@@ -182,6 +185,32 @@
         <ol id="detail-history" class="history-list"></ol>
       </section>
       <p class="detail-link"><a id="detail-url" href="#" target="_blank" rel="noopener">Open original listing ↗</a></p>
+    </div>
+  </dialog>
+
+  <dialog id="import-dialog" class="import-dialog">
+    <div class="import-inner">
+      <header class="import-head">
+        <h2>Import listing HTML</h2>
+        <button type="button" class="btn ghost" id="import-close" aria-label="Close">Close</button>
+      </header>
+      <p class="import-hint">
+        Paste page source from your browser (View Source). URL is optional — extracted from the page when missing.
+        RE/MAX and Yitaku use generic text extraction from pasted HTML.
+      </p>
+      <label class="field">
+        <span>Listing URL (optional)</span>
+        <input type="url" id="import-url" placeholder="https://…" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span>Page HTML</span>
+        <textarea id="import-html" rows="12" placeholder="Paste full HTML here…"></textarea>
+      </label>
+      <div class="import-actions">
+        <button type="button" class="btn primary" id="import-submit">Import</button>
+        <button type="button" class="btn ghost" id="import-cancel">Cancel</button>
+      </div>
+      <p class="import-status" id="import-status" hidden></p>
     </div>
   </dialog>
 

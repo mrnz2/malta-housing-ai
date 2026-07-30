@@ -223,6 +223,22 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
+.results-bar-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.icon-btn {
+  min-width: 2rem;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+  border-radius: 999px;
+}
+
 .results-title {
   margin: 0;
   font-family: var(--font-display);
@@ -521,6 +537,96 @@ body {
 .detail-dialog::backdrop {
   background: rgba(21, 32, 40, 0.45);
   backdrop-filter: blur(3px);
+}
+
+.import-dialog {
+  border: none;
+  border-radius: 18px;
+  padding: 0;
+  width: min(720px, calc(100vw - 2rem));
+  background: #fffcf6;
+  box-shadow: 0 30px 80px rgba(21, 32, 40, 0.28);
+  color: var(--ink);
+}
+
+.import-dialog::backdrop {
+  background: rgba(21, 32, 40, 0.45);
+  backdrop-filter: blur(3px);
+}
+
+.import-inner {
+  padding: 1.35rem 1.4rem 1.5rem;
+}
+
+.import-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.import-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 500;
+}
+
+.import-hint {
+  margin: 0 0 1rem;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.import-inner textarea {
+  font: 500 0.88rem/1.45 var(--font-mono, var(--font-body));
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink);
+  background: #fffdf8;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  outline: none;
+  resize: vertical;
+  min-height: 12rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.import-inner textarea:focus {
+  border-color: var(--sea);
+  box-shadow: 0 0 0 3px rgba(10, 107, 120, 0.15);
+}
+
+.import-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.import-status {
+  margin: 0.85rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.import-status.is-running {
+  color: var(--sea);
+}
+
+.import-status.is-error {
+  color: #b42318;
+}
+
+.import-status.is-skipped {
+  color: #8a6a00;
+}
+
+.import-status.is-success {
+  color: #0a6b78;
 }
 
 .detail-inner {

@@ -47,6 +47,14 @@ const els = {
   detailNotesSave: document.getElementById("detail-notes-save"),
   detailNotesStatus: document.getElementById("detail-notes-status"),
   detailReady: document.getElementById("detail-ready"),
+  importDialog: document.getElementById("import-dialog"),
+  importOpen: document.getElementById("import-open"),
+  importClose: document.getElementById("import-close"),
+  importCancel: document.getElementById("import-cancel"),
+  importUrl: document.getElementById("import-url"),
+  importHtml: document.getElementById("import-html"),
+  importSubmit: document.getElementById("import-submit"),
+  importStatus: document.getElementById("import-status"),
 };
 
 function euro(value) {
@@ -666,6 +674,116 @@ async function openDetail(id) {
   els.dialog.showModal();
 }
 
+const IMPORT_STEP_LABELS = {
+  queued: "Queued…",
+  detecting: "Detecting portal…",
+  extracting: "Extracting listing text…",
+  staging: "Saving to staging…",
+  parsing: "Parsing with Ollama…",
+  db: "Saving to database…",
+  evaluating: "AI investment evaluation…",
+  done: "Import complete",
+  failed: "Import failed",
+  skipped: "Skipped",
+};
+
+function setImportStatus(text, kind = "running") {
+  els.importStatus.hidden = false;
+  els.importStatus.textContent = text;
+  els.importStatus.className = `import-status is-${kind}`;
+}
+
+function resetImportStatus() {
+  els.importStatus.hidden = true;
+  els.importStatus.textContent = "";
+  els.importStatus.className = "import-status";
+}
+
+function setImportBusy(busy) {
+  els.importSubmit.disabled = busy;
+  els.importCancel.disabled = busy;
+  els.importUrl.disabled = busy;
+  els.importHtml.disabled = busy;
+}
+
+async function pollImportJob(jobId) {
+  const res = await fetch(`/api/jobs/${jobId}`);
+  if (!res.ok) {
+    setImportStatus("Could not read import status.", "error");
+    setImportBusy(false);
+    return;
+  }
+  const job = await res.json();
+  const label = IMPORT_STEP_LABELS[job.step] || job.message || job.step;
+  if (job.status === "queued" || job.status === "running") {
+    setImportStatus(label, "running");
+    setTimeout(() => pollImportJob(jobId), 1500);
+    return;
+  }
+  setImportBusy(false);
+  if (job.status === "failed") {
+    setImportStatus(job.error || job.message || "Import failed", "error");
+    return;
+  }
+  if (job.status === "skipped") {
+    setImportStatus(job.message || "Listing skipped", "skipped");
+    await loadStats();
+    await loadListings();
+    return;
+  }
+  setImportStatus(
+    job.source ? `Done — ${job.source}` : "Import complete",
+    "success",
+  );
+  await loadStats();
+  await loadListings();
+  if (job.listing_id) {
+    await openDetail(job.listing_id);
+  }
+}
+
+async function submitManualImport() {
+  const html = els.importHtml.value.trim();
+  if (!html) {
+    setImportStatus("Paste the page HTML first.", "error");
+    return;
+  }
+  const url = els.importUrl.value.trim();
+  setImportBusy(true);
+  setImportStatus(IMPORT_STEP_LABELS.queued, "running");
+  try {
+    const res = await fetch("/api/manual-import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        html,
+        url: url || undefined,
+      }),
+    });
+    const payload = await res.json();
+    if (!res.ok) {
+      setImportStatus(payload.error || "Import request failed", "error");
+      setImportBusy(false);
+      return;
+    }
+    await pollImportJob(payload.job_id);
+  } catch (err) {
+    setImportStatus(String(err), "error");
+    setImportBusy(false);
+  }
+}
+
+function openImportDialog() {
+  resetImportStatus();
+  setImportBusy(false);
+  els.importDialog.showModal();
+}
+
+function closeImportDialog() {
+  if (els.importSubmit.disabled) return;
+  els.importDialog.close();
+}
+
 els.form.addEventListener("submit", (e) => {
   e.preventDefault();
   state.filters = readFilters();
@@ -711,6 +829,26 @@ els.close.addEventListener("click", () => els.dialog.close());
 els.dialog.addEventListener("click", (e) => {
   if (e.target === els.dialog) els.dialog.close();
 });
+
+if (els.importOpen) {
+  els.importOpen.addEventListener("click", () => openImportDialog());
+}
+if (els.importClose) {
+  els.importClose.addEventListener("click", () => closeImportDialog());
+}
+if (els.importCancel) {
+  els.importCancel.addEventListener("click", () => closeImportDialog());
+}
+if (els.importSubmit) {
+  els.importSubmit.addEventListener("click", () => submitManualImport());
+}
+if (els.importDialog) {
+  els.importDialog.addEventListener("click", (e) => {
+    if (e.target === els.importDialog && !els.importSubmit.disabled) {
+      els.importDialog.close();
+    }
+  });
+}
 
 const initialUrlState = readUrlState();
 state.filters = initialUrlState.filters;

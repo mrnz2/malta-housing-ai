@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 import mimetypes
 import re
+import threading
+import uuid
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -13,9 +16,100 @@ from urllib.parse import parse_qs, unquote, urlparse
 from malta_housing.common import configure_stdio
 from malta_housing.db import queries
 from malta_housing.db.store import init_db, set_listing_fav, set_listing_hidden, set_listing_notes, set_listing_ready
+from malta_housing.manual_import import run_manual_pipeline
 from malta_housing.paths import DB_PATH, PACKAGE_ROOT
 
 STATIC_DIR = PACKAGE_ROOT / "web" / "static"
+MAX_MANUAL_IMPORT_BYTES = 3 * 1024 * 1024
+
+
+@dataclass
+class ImportJob:
+    id: str
+    status: str = "queued"
+    step: str = "queued"
+    message: str = "Queued"
+    error: str | None = None
+    url: str | None = None
+    source: str | None = None
+    listing_id: int | None = None
+
+
+_jobs: dict[str, ImportJob] = {}
+_jobs_lock = threading.Lock()
+
+
+def _create_import_job() -> ImportJob:
+    job = ImportJob(id=str(uuid.uuid4()))
+    with _jobs_lock:
+        _jobs[job.id] = job
+    return job
+
+
+def _get_import_job(job_id: str) -> ImportJob | None:
+    with _jobs_lock:
+        return _jobs.get(job_id)
+
+
+def _update_import_job(job_id: str, **kwargs: Any) -> None:
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is None:
+            return
+        for key, value in kwargs.items():
+            setattr(job, key, value)
+
+
+def _job_to_dict(job: ImportJob) -> dict[str, Any]:
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "step": job.step,
+        "message": job.message,
+        "error": job.error,
+        "url": job.url,
+        "source": job.source,
+        "listing_id": job.listing_id,
+    }
+
+
+def _run_import_job(job_id: str, html: str, url: str | None) -> None:
+    _update_import_job(job_id, status="running", step="queued", message="Starting…")
+
+    def on_progress(step: str, message: str) -> None:
+        _update_import_job(job_id, status="running", step=step, message=message)
+
+    try:
+        result = run_manual_pipeline(html, url, on_progress=on_progress)
+        status = result.get("status", "done")
+        if status == "skipped":
+            _update_import_job(
+                job_id,
+                status="skipped",
+                step=result.get("step", "skipped"),
+                message=result.get("message", "Skipped"),
+                url=result.get("url"),
+                source=result.get("source"),
+                listing_id=result.get("listing_id"),
+            )
+        else:
+            _update_import_job(
+                job_id,
+                status="done",
+                step="done",
+                message=result.get("message", "Import complete"),
+                url=result.get("url"),
+                source=result.get("source"),
+                listing_id=result.get("listing_id"),
+            )
+    except Exception as exc:
+        _update_import_job(
+            job_id,
+            status="failed",
+            step="failed",
+            message="Import failed",
+            error=str(exc),
+        )
 
 
 def _json_bytes(payload: Any, status: int = 200) -> tuple[int, bytes, str]:
@@ -101,11 +195,54 @@ class BrowseHandler(BaseHTTPRequestHandler):
             self._send(*_json_bytes({"items": history}))
             return
 
+        match_job = re.fullmatch(r"/api/jobs/([a-f0-9-]+)", path)
+        if match_job:
+            job = _get_import_job(match_job.group(1))
+            if job is None:
+                self._send(*_json_bytes({"error": "Job not found"}, 404))
+                return
+            self._send(*_json_bytes(_job_to_dict(job)))
+            return
+
         self._send(*_json_bytes({"error": "Not found"}, 404))
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
+
+        if path == "/api/manual-import":
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > MAX_MANUAL_IMPORT_BYTES:
+                self._send(
+                    *_json_bytes(
+                        {"error": f"HTML too large (max {MAX_MANUAL_IMPORT_BYTES} bytes)"},
+                        413,
+                    )
+                )
+                return
+            raw = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                body = json.loads(raw.decode("utf-8") or "{}")
+            except json.JSONDecodeError:
+                self._send(*_json_bytes({"error": "Invalid JSON"}, 400))
+                return
+            html = body.get("html")
+            if not isinstance(html, str) or not html.strip():
+                self._send(*_json_bytes({"error": "Missing non-empty 'html' string"}, 400))
+                return
+            url = body.get("url")
+            if url is not None and not isinstance(url, str):
+                self._send(*_json_bytes({"error": "'url' must be a string"}, 400))
+                return
+            job = _create_import_job()
+            thread = threading.Thread(
+                target=_run_import_job,
+                args=(job.id, html, url.strip() if isinstance(url, str) and url.strip() else None),
+                daemon=True,
+            )
+            thread.start()
+            self._send(*_json_bytes(_job_to_dict(job), 202))
+            return
 
         match = re.fullmatch(r"/api/listings/(\d+)/hidden", path)
         if match:

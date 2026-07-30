@@ -265,6 +265,24 @@ def _raw_text_from_detail(html: str, url: str, title: str) -> str:
     return "\n".join(lines).strip()
 
 
+def parse_belair_html(html: str, url: str) -> ScrapedListing:
+    """Extract a staging listing from Belair property page HTML."""
+    title = _title_from_detail(html)
+    if title == "Brak tytułu":
+        title = "Belair Property"
+
+    raw_text = _raw_text_from_detail(html, url, title)
+    if not raw_text.strip():
+        _, raw_text = extract_title_and_text(html)
+    return ScrapedListing(
+        url=url,
+        title=title,
+        raw_text=raw_text,
+        source=SOURCE,
+        scraped_at=utc_now_iso(),
+    )
+
+
 def scrape_item_details(client: HttpClient, url: str) -> ScrapedListing | None:
     """Fetch a single Belair property page."""
     try:
@@ -273,20 +291,7 @@ def scrape_item_details(client: HttpClient, url: str) -> ScrapedListing | None:
         print(f"   └─ Błąd pobierania {url}: {e}")
         return None
 
-    title = _title_from_detail(response.text)
-    if title == "Brak tytułu":
-        title = "Belair Property"
-
-    raw_text = _raw_text_from_detail(response.text, url, title)
-    if not raw_text.strip():
-        _, raw_text = extract_title_and_text(response.text)
-    return ScrapedListing(
-        url=url,
-        title=title,
-        raw_text=raw_text,
-        source=SOURCE,
-        scraped_at=utc_now_iso(),
-    )
+    return parse_belair_html(response.text, url)
 
 
 def run_belair_scraper(max_pages: int = 3) -> list[dict]:

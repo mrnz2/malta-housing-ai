@@ -444,6 +444,35 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
     return listing
 
 
+def get_listing_by_url(url: str, db_name: str | Path = DB_PATH) -> dict[str, Any] | None:
+    if not Path(db_name).exists():
+        return None
+    conn = _connect(db_name)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"""
+            SELECT
+                {_LISTING_COLUMNS_QUALIFIED},
+                e.pros, e.cons, e.evaluation_json
+            FROM listings
+            LEFT JOIN evaluations e ON e.url = listings.url
+            WHERE listings.url = ?
+            """,
+            (url,),
+        )
+        row = cur.fetchone()
+    except sqlite3.OperationalError:
+        conn.close()
+        return None
+    conn.close()
+    if not row:
+        return None
+    listing = _enrich_with_evaluation(_row_to_listing(row))
+    _annotate_is_new([listing])
+    return listing
+
+
 def get_rank_candidates(
     *,
     max_price: int | None = None,

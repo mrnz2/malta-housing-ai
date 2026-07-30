@@ -100,6 +100,39 @@ def _quality_null_counts(items: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+def parse_staged_item(item: dict[str, Any], *, force: bool = True) -> dict[str, Any]:
+    """Parse one staged listing with LLM and merge into parsed_listings.json."""
+    if not force and item.get("url"):
+        known = get_known_urls()
+        if item["url"] in known:
+            existing = {
+                row["url"]: row
+                for row in load_json_list(PARSED_PATH)
+                if "url" in row
+            }
+            if item["url"] in existing:
+                return existing[item["url"]]
+
+    parsed_data = parse_with_llm(item)
+    result = ParsedListing(
+        **parsed_data.model_dump(),
+        url=item["url"],
+        source=resolve_source(item.get("source"), item["url"]),
+        scraped_at=item.get("scraped_at"),
+        updated_at=utc_now_iso(),
+        distance_to_gzira_km=distance_to_gzira_km(parsed_data.locality),
+        sea_proximity=sea_proximity_for(parsed_data.locality),
+    )
+    result_dict = result.model_dump()
+
+    results_by_url = {
+        row["url"]: row for row in load_json_list(PARSED_PATH) if "url" in row
+    }
+    results_by_url[item["url"]] = result_dict
+    save_json_list(PARSED_PATH, list(results_by_url.values()))
+    return result_dict
+
+
 def run_parser(
     *,
     force: bool = False,

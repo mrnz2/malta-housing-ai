@@ -182,6 +182,44 @@ def _main_content_text(main: BeautifulSoup) -> str:
     return main.get_text(separator="\n", strip=True)
 
 
+def parse_propertymarket_html(html: str, url: str) -> ScrapedListing:
+    """Extract a staging listing from Property Market detail page HTML."""
+    soup = BeautifulSoup(html, "html.parser")
+    main = soup.find("main")
+    meta_text = "\n".join(_meta_lines(soup))
+    main_text = _main_content_text(main) if main else ""
+
+    parts = [part for part in (meta_text, main_text) if part]
+    raw_text = "\n\n".join(parts)
+
+    title_tag = None
+    if main:
+        title_tag = main.select_one("#myListingDetailsTitle h1") or main.find("h1")
+    if not title_tag:
+        og_title = soup.find("meta", property="og:title")
+        if og_title and og_title.get("content"):
+            title = og_title["content"].strip()
+        else:
+            title_tag = soup.find("title")
+            title = title_tag.get_text(strip=True) if title_tag else "Brak tytułu"
+    else:
+        title = title_tag.get_text(strip=True)
+
+    if not raw_text:
+        title, raw_text = extract_title_and_text(html)
+
+    if title == "Brak tytułu":
+        title = "Property Market Listing"
+
+    return ScrapedListing(
+        url=url,
+        title=title,
+        raw_text=raw_text,
+        source=SOURCE,
+        scraped_at=utc_now_iso(),
+    )
+
+
 def scrape_item_details(
     client: HttpClient, url: str, *, referer: str | None = None
 ) -> ScrapedListing | None:
@@ -211,40 +249,7 @@ def scrape_item_details(
             listing_referer = _warm_session(client, referer=f"{BASE_URL}/")
             continue
 
-        soup = BeautifulSoup(response.text, "html.parser")
-        main = soup.find("main")
-        meta_text = "\n".join(_meta_lines(soup))
-        main_text = _main_content_text(main) if main else ""
-
-        parts = [part for part in (meta_text, main_text) if part]
-        raw_text = "\n\n".join(parts)
-
-        title_tag = None
-        if main:
-            title_tag = main.select_one("#myListingDetailsTitle h1") or main.find("h1")
-        if not title_tag:
-            og_title = soup.find("meta", property="og:title")
-            if og_title and og_title.get("content"):
-                title = og_title["content"].strip()
-            else:
-                title_tag = soup.find("title")
-                title = title_tag.get_text(strip=True) if title_tag else "Brak tytułu"
-        else:
-            title = title_tag.get_text(strip=True)
-
-        if not raw_text:
-            title, raw_text = extract_title_and_text(response.text)
-
-        if title == "Brak tytułu":
-            title = "Property Market Listing"
-
-        return ScrapedListing(
-            url=url,
-            title=title,
-            raw_text=raw_text,
-            source=SOURCE,
-            scraped_at=utc_now_iso(),
-        )
+        return parse_propertymarket_html(response.text, url)
 
     return None
 
