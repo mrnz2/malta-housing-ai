@@ -15,10 +15,11 @@ from malta_housing.common import (
     STAGING_PATH,
     append_jsonl,
     load_json_list,
+    purge_hidden_from_json,
     resolve_source,
     save_json_list,
 )
-from malta_housing.db.store import get_known_urls
+from malta_housing.db.store import get_hidden_urls, get_known_urls
 from malta_housing.distances import distance_to_gzira_km, sea_proximity_for
 from malta_housing.geo import is_gozo_record
 from malta_housing.models import MaltaPropertySchema, ParsedListing, utc_now_iso
@@ -108,6 +109,10 @@ def parse_staged_item(
     html: str | None = None,
 ) -> dict[str, Any]:
     """Parse one staged listing with LLM and merge into parsed_listings.json."""
+    url = item.get("url")
+    if url and url in get_hidden_urls():
+        raise ValueError("Skipped: hidden listing")
+
     if not force and item.get("url"):
         known = get_known_urls()
         if item["url"] in known:
@@ -151,15 +156,27 @@ def run_parser(
     force: bool = False,
     checkpoint_every: int = CHECKPOINT_EVERY,
 ) -> list[dict[str, Any]]:
+    hidden_urls = get_hidden_urls()
+    removed_staging = purge_hidden_from_json(STAGING_PATH)
+    if removed_staging:
+        print(f"🧹 Usunięto {removed_staging} ukryte z {STAGING_PATH.name}.")
     raw_listings = load_json_list(STAGING_PATH)
     if not raw_listings:
+        removed_parsed = purge_hidden_from_json(PARSED_PATH)
+        if removed_parsed:
+            print(f"🧹 Usunięto {removed_parsed} ukryte z {PARSED_PATH.name}.")
         print(f"⚠️ Brak danych w {STAGING_PATH}.")
         return []
 
     already_parsed = {
         item["url"]: item
         for item in load_json_list(PARSED_PATH)
-        if "url" in item and not is_gozo_record(item) and not is_out_of_budget(item)
+        if (
+            "url" in item
+            and item["url"] not in hidden_urls
+            and not is_gozo_record(item)
+            and not is_out_of_budget(item)
+        )
     }
     # Backfill locality fields on checkpoint rows that predate these fields
     for url, item in list(already_parsed.items()):
@@ -184,9 +201,13 @@ def run_parser(
     skipped_known = 0
     skipped_gozo = 0
     skipped_budget = 0
+    skipped_hidden = 0
     for item in raw_listings:
         url = item.get("url")
         if not url:
+            continue
+        if url in hidden_urls:
+            skipped_hidden += 1
             continue
         if is_gozo_record(item):
             skipped_gozo += 1
@@ -202,6 +223,7 @@ def run_parser(
         f"🚀 Parsowanie: {len(to_process)} do zrobienia "
         f"(pominięto {skipped_known} już w DB, "
         f"{skipped_gozo} Gozo, "
+        f"{skipped_hidden} ukryte, "
         f"{len(already_parsed)} już w parsed checkpoint).\n"
     )
 
@@ -270,11 +292,16 @@ def run_parser(
 
     all_results = list(results_by_url.values())
     save_json_list(PARSED_PATH, all_results)
+    removed_parsed = purge_hidden_from_json(PARSED_PATH)
+    if removed_parsed:
+        all_results = load_json_list(PARSED_PATH)
+        print(f"🧹 Usunięto {removed_parsed} ukryte z {PARSED_PATH.name}.")
 
     nulls = _quality_null_counts(all_results)
     print(
         f"\n✅ Gotowe! Sukces w tej sesji: {success}, błędy: {failures}, "
-        f"pominięte Gozo: {skipped_gozo}, poza budżetem: {skipped_budget}. "
+        f"pominięte Gozo: {skipped_gozo}, poza budżetem: {skipped_budget}, "
+        f"ukryte: {skipped_hidden}. "
         f"Łącznie w {PARSED_PATH}: {len(all_results)}. "
         f"Nulls — price: {nulls['missing_price_eur']}, locality: {nulls['missing_locality']}."
     )

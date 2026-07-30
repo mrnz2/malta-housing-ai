@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from malta_housing.analysis.evaluator import evaluate_listing
 from malta_housing.common import STAGING_PATH, load_json_list
-from malta_housing.db.store import get_evaluated_urls, init_db, save_evaluation
+from malta_housing.db.store import get_evaluated_urls, get_hidden_urls, init_db, save_evaluation
 from malta_housing.db.queries import get_latest_scrape_day, get_rank_candidates
 from malta_housing.models import ParsedListing
 from malta_housing.paths import DB_PATH
@@ -17,6 +18,18 @@ _SEA_LABELS = {
     "blisko": "blisko",
     "daleko": "daleko",
 }
+
+
+def _format_duration(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes = int(seconds // 60)
+    secs = seconds % 60
+    if minutes < 60:
+        return f"{minutes}m {secs:.1f}s"
+    hours = int(minutes // 60)
+    minutes = minutes % 60
+    return f"{hours}h {minutes}m {secs:.0f}s"
 
 
 def _load_raw_text_by_url() -> dict[str, str]:
@@ -252,6 +265,9 @@ def run_rank(
     """Evaluate unevaluated candidates, persist scores, return ranked rows."""
     init_db(db_name)
     candidates = get_rank_candidates(max_price=max_price, source=source, db_name=db_name)
+    hidden_urls = get_hidden_urls(db_name=db_name)
+    if hidden_urls:
+        candidates = [c for c in candidates if c.get("url") not in hidden_urls]
     if new_only:
         latest_day = get_latest_scrape_day(db_name=db_name)
         candidates = _filter_latest_scrape(candidates, latest_day)
@@ -263,7 +279,11 @@ def run_rank(
     raw_by_url = _load_raw_text_by_url()
     already_evaluated = set() if force else get_evaluated_urls(db_name=db_name)
 
-    to_evaluate = [c for c in candidates if c["url"] not in already_evaluated]
+    to_evaluate = [
+        c
+        for c in candidates
+        if c["url"] not in already_evaluated and c["url"] not in hidden_urls
+    ]
     skipped = len(candidates) - len(to_evaluate)
 
     print(
@@ -277,13 +297,29 @@ def run_rank(
 
     evaluated_ok = 0
     evaluated_fail = 0
+    session_started = time.perf_counter()
+    item_durations: list[float] = []
+
+    if to_evaluate:
+        started_at = time.strftime("%H:%M:%S")
+        print(f"   Started at {started_at}")
 
     for i, row in enumerate(to_evaluate, 1):
         url = row["url"]
+        item_started = time.perf_counter()
+        if url in hidden_urls:
+            elapsed = time.perf_counter() - item_started
+            print(
+                f"[{i}/{len(to_evaluate)}] Pominięto (ukryte): {row.get('title', url)} "
+                f"({_format_duration(elapsed)})"
+            )
+            continue
         raw_text = raw_by_url.get(url, "")
         print(f"[{i}/{len(to_evaluate)}] Evaluating: {row.get('title', url)}...")
         if not raw_text.strip():
-            print("   └─ Skipped: no raw_text in scraped_listings.json")
+            elapsed = time.perf_counter() - item_started
+            item_durations.append(elapsed)
+            print(f"   └─ Skipped: no raw_text in scraped_listings.json ({_format_duration(elapsed)})")
             evaluated_fail += 1
             continue
         try:
@@ -291,17 +327,28 @@ def run_rank(
             result = evaluate_listing(listing, raw_text)
             save_evaluation(url, result, db_name=db_name)
             evaluated_ok += 1
+            elapsed = time.perf_counter() - item_started
+            item_durations.append(elapsed)
             print(
                 f"   └─ Score: {result['investment_score']}/10 "
-                f"(base {result['base_score']} + LLM {_format_adjustment(result['qualitative_adjustment'])})"
+                f"(base {result['base_score']} + LLM {_format_adjustment(result['qualitative_adjustment'])}) "
+                f"[{_format_duration(elapsed)}]"
             )
         except Exception as exc:
+            elapsed = time.perf_counter() - item_started
+            item_durations.append(elapsed)
             evaluated_fail += 1
-            print(f"   └─ Error: {exc}")
+            print(f"   └─ Error: {exc} [{_format_duration(elapsed)}]")
 
     if to_evaluate:
+        session_elapsed = time.perf_counter() - session_started
+        avg_txt = ""
+        if item_durations:
+            avg = sum(item_durations) / len(item_durations)
+            avg_txt = f", avg {_format_duration(avg)}/item"
         print(
-            f"\n✅ Evaluation session: {evaluated_ok} ok, {evaluated_fail} failed."
+            f"\n✅ Evaluation session: {evaluated_ok} ok, {evaluated_fail} failed. "
+            f"Total time: {_format_duration(session_elapsed)}{avg_txt}."
         )
 
     from malta_housing.db.queries import get_ranked_listings

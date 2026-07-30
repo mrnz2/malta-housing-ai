@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from malta_housing.budget import MAX_PRICE_EUR, MIN_PRICE_EUR, is_out_of_budget
-from malta_housing.common import PARSED_PATH, load_json_list, resolve_source
+from malta_housing.common import PARSED_PATH, load_json_list, purge_hidden_from_json, resolve_source
 from malta_housing.distances import distance_to_gzira_km, sea_proximity_for
 from malta_housing.geo import is_gozo_record
 from malta_housing.models import utc_now_iso
@@ -240,6 +240,22 @@ def get_known_urls(db_name: str | Path = DB_PATH) -> set[str]:
     return urls
 
 
+def get_hidden_urls(db_name: str | Path = DB_PATH) -> set[str]:
+    """Return URLs marked hidden in the listings table (skip parse/rank/scrape)."""
+    db_path = Path(db_name)
+    if not db_path.exists():
+        return set()
+    conn = _connect(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT url FROM listings WHERE is_hidden = 1")
+        urls = {row["url"] for row in cursor.fetchall()}
+    except sqlite3.OperationalError:
+        urls = set()
+    conn.close()
+    return urls
+
+
 def delete_gozo_listings(db_name: str | Path = DB_PATH) -> dict[str, int]:
     """Remove Gozo properties (and their price history) from the database."""
     if not Path(db_name).exists():
@@ -312,6 +328,42 @@ def delete_out_of_budget_listings(
         "below_min": below_min,
         "above_max": above_max,
     }
+
+
+def clear_evaluations(db_name: str | Path = DB_PATH) -> dict[str, int]:
+    """Remove all AI scores/evaluations; listings keep ai_score fields NULL."""
+    if not Path(db_name).exists():
+        print(f"⚠️ Brak bazy {db_name} — nic do wyczyszczenia.")
+        return {"evaluations_deleted": 0, "listings_cleared": 0}
+
+    init_db(db_name)
+    conn = _connect(db_name)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM evaluations")
+    eval_count = int(cursor.fetchone()[0])
+    cursor.execute(
+        """
+        SELECT COUNT(*) FROM listings
+        WHERE ai_score IS NOT NULL
+           OR ai_summary IS NOT NULL
+           OR ai_evaluated_at IS NOT NULL
+        """
+    )
+    listings_cleared = int(cursor.fetchone()[0])
+    cursor.execute("DELETE FROM evaluations")
+    cursor.execute(
+        """
+        UPDATE listings
+        SET ai_score = NULL, ai_summary = NULL, ai_evaluated_at = NULL
+        """
+    )
+    conn.commit()
+    conn.close()
+    print(
+        f"🧹 Wyczyszczono oceny AI: {eval_count} ewaluacji, "
+        f"{listings_cleared} ofert w listings."
+    )
+    return {"evaluations_deleted": eval_count, "listings_cleared": listings_cleared}
 
 
 def set_listing_hidden(
@@ -396,6 +448,7 @@ def save_listings_to_db(
     price_changes = 0
     skipped_gozo = 0
     skipped_budget = 0
+    skipped_hidden = 0
     now = utc_now_iso()
 
     for item in listings:
@@ -407,6 +460,14 @@ def save_listings_to_db(
             continue
 
         url = item["url"]
+        cursor.execute(
+            "SELECT price_eur, title, is_hidden FROM listings WHERE url = ?",
+            (url,),
+        )
+        existing = cursor.fetchone()
+        if existing is not None and existing["is_hidden"]:
+            skipped_hidden += 1
+            continue
         key_features = item.get("key_features", [])
         if not isinstance(key_features, str):
             key_features = json.dumps(key_features, ensure_ascii=False)
@@ -420,9 +481,6 @@ def save_listings_to_db(
             sea_proximity = sea_proximity_for(item.get("locality"))
 
         source = resolve_source(item.get("source"), url)
-
-        cursor.execute("SELECT price_eur, title FROM listings WHERE url = ?", (url,))
-        existing = cursor.fetchone()
 
         ready = item.get("ready")
         if ready is not None:
@@ -518,12 +576,14 @@ def save_listings_to_db(
         "price_changes": price_changes,
         "skipped_gozo": skipped_gozo,
         "skipped_budget": skipped_budget,
+        "skipped_hidden": skipped_hidden,
     }
     print(
         f"💾 DB '{db_name}': +{inserted} new, ~{updated} updated, "
         f"{price_changes} price change(s) logged"
         + (f", skipped {skipped_gozo} Gozo" if skipped_gozo else "")
         + (f", skipped {skipped_budget} out of budget" if skipped_budget else "")
+        + (f", skipped {skipped_hidden} hidden" if skipped_hidden else "")
         + "."
     )
     return stats
@@ -533,6 +593,9 @@ def load_parsed_and_save(
     parsed_path: Path = PARSED_PATH, db_name: str | Path = DB_PATH
 ) -> None:
     init_db(db_name)
+    removed = purge_hidden_from_json(parsed_path)
+    if removed:
+        print(f"🧹 Usunięto {removed} ukryte z {parsed_path.name}.")
     parsed_data = load_json_list(parsed_path)
     if not parsed_data:
         print(f"⚠️ Brak danych w {parsed_path} — nic do zapisania.")
@@ -563,6 +626,8 @@ def save_evaluation(
 ) -> None:
     """Persist or update an LLM investment evaluation for a listing URL."""
     init_db(db_name)
+    if url in get_hidden_urls(db_name):
+        return
     score = evaluation["investment_score"]
     summary = evaluation.get("summary", "")
     pros = evaluation.get("pros", [])

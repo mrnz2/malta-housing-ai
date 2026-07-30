@@ -8,7 +8,7 @@ import time
 from typing import Any
 from urllib.parse import urlencode
 
-from malta_housing.common import HttpClient, merge_staging
+from malta_housing.common import HttpClient, load_hidden_urls, merge_staging
 from malta_housing.geo import is_gozo_listing
 from malta_housing.models import ScrapedListing, utc_now_iso
 
@@ -166,6 +166,8 @@ def run_remax_scraper(max_pages: int = 3) -> list[dict]:
     client = HttpClient(headers=API_HEADERS, timeout=20.0)
     scraped_data: list[ScrapedListing] = []
     skipped_gozo = 0
+    skipped_hidden = 0
+    hidden_urls = load_hidden_urls()
     seen_ids: set[Any] = set()
 
     print(f"🚀 Rozpoczynam pobieranie z RE/MAX Malta API (strony 1-{max_pages})...\n")
@@ -191,6 +193,10 @@ def run_remax_scraper(max_pages: int = 3) -> list[dict]:
             scraped = item_to_scraped(item)
             if scraped is None:
                 continue
+            if scraped.url in hidden_urls:
+                skipped_hidden += 1
+                print(f"   └─ Pominięto (ukryte): {scraped.url}")
+                continue
             locality = item.get("Town") or ""
             if is_gozo_listing(title=scraped.title, locality=locality, url=scraped.url):
                 skipped_gozo += 1
@@ -208,7 +214,7 @@ def run_remax_scraper(max_pages: int = 3) -> list[dict]:
     merged = merge_staging(scraped_data)
     print(
         f"\n✅ Zakończono! Pobrano {len(scraped_data)} ogłoszeń"
-        f" (pominięto {skipped_gozo} Gozo); "
+        f" (pominięto {skipped_gozo} Gozo, {skipped_hidden} ukryte); "
         f"staging ma teraz {len(merged)} unikalnych URL-i."
     )
     print("👉 Możesz teraz uruchomić: python -m malta_housing parse")

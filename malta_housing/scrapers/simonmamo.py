@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 from malta_housing.common import (
     HttpClient,
     extract_title_and_text,
+    load_hidden_urls,
     merge_staging,
 )
 from malta_housing.geo import is_gozo_listing
@@ -132,7 +133,13 @@ def run_simonmamo_scraper(max_pages: int = 3) -> list[dict]:
 
     scraped_data: list[ScrapedListing] = []
     skipped_gozo = 0
+    skipped_hidden = 0
+    hidden_urls = load_hidden_urls()
     for i, url in enumerate(all_item_urls, 1):
+        if url in hidden_urls:
+            skipped_hidden += 1
+            print(f"[{i}/{len(all_item_urls)}] Pominięto (ukryte): {url}")
+            continue
         print(f"[{i}/{len(all_item_urls)}] Pobieranie opisu: {url}")
         item_data = scrape_item_details(client, url)
         if item_data:
@@ -146,7 +153,7 @@ def run_simonmamo_scraper(max_pages: int = 3) -> list[dict]:
     merged = merge_staging(scraped_data)
     print(
         f"\n✅ Zakończono! Pobrano {len(scraped_data)} ogłoszeń"
-        f" (pominięto {skipped_gozo} Gozo); "
+        f" (pominięto {skipped_gozo} Gozo, {skipped_hidden} ukryte); "
         f"staging ma teraz {len(merged)} unikalnych URL-i."
     )
     print("👉 Możesz teraz uruchomić: python -m malta_housing parse")

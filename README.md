@@ -21,6 +21,8 @@ An automated pipeline for scraping, processing, analyzing, and storing real esta
 │                         │ -> propertymarket.py
 │                         │ -> yitaku.py
 │                         │ -> remax.py
+│                         │ -> simonmamo.py
+│                         │ -> belair.py
 └────────────┬────────────┘
              │ Merges raw payloads (by URL)
              ▼
@@ -56,9 +58,9 @@ An automated pipeline for scraping, processing, analyzing, and storing real esta
 └─────────────────────────┘
 ```
 
-Orchestration: `python -m malta_housing` (`run` / `scrape` / `parse` / `db` / `rank` / `init-db` / `serve` / `purge-gozo` / `purge-budget`).
+Orchestration: `python -m malta_housing` (`run` / `scrape` / `parse` / `db` / `rank` / `init-db` / `serve` / `purge-gozo` / `purge-budget` / `purge-scores`).
 
-Windows one-shot for **all** portals: `.\run_all.ps1` (scrape each source → parse → db).
+Windows one-shot for **all** portals: `.\run_all.ps1` (scrape each source → parse → db → rank new listings).
 
 ### 2. Package layout
 
@@ -79,7 +81,9 @@ malta-housing-ai/
 │   │   ├── djar.py
 │   │   ├── propertymarket.py
 │   │   ├── yitaku.py
-│   │   └── remax.py
+│   │   ├── remax.py
+│   │   ├── simonmamo.py
+│   │   └── belair.py
 │   ├── parsing/
 │   │   └── llm.py
 │   ├── analysis/
@@ -105,7 +109,7 @@ malta-housing-ai/
 
 * `malta_housing/models.py`: Shared Pydantic contracts (`ScrapedListing`, `MaltaPropertySchema`, `ParsedListing`).
 * `malta_housing/common.py`: Shared HTTP client (session + retry on 429/5xx; optional `curl_cffi` TLS impersonation; SiteGround PoW auto-solve), staging merge I/O, HTML text helpers.
-* `malta_housing/scrapers/*.py`: Portal scrapers (`maltapark`, `ownersbest`, `djar`, `propertymarket`, `yitaku`, `remax`, `simonmamo`).
+* `malta_housing/scrapers/*.py`: Portal scrapers (`maltapark`, `ownersbest`, `djar`, `propertymarket`, `yitaku`, `remax`, `simonmamo`, `belair`).
 * `malta_housing/parsing/llm.py`: Ollama extraction with checkpoints; skips URLs already in DB (unless `--force`).
 * `malta_housing/distances.py`: Locality profiles from `to_gzira.csv` — km to Gżira, sea proximity (`nad_morzem` / `blisko` / `daleko`), region.
 * `malta_housing/analysis/scoring.py`: Deterministic **base score** (0–8) from price/m², distance to Gżira, sea proximity, area, and structural flags (freehold, airspace, shell, seller).
@@ -115,7 +119,7 @@ malta-housing-ai/
 * `malta_housing/db/queries.py`: Read API for the browser (filtering, sorting by `ai_score`, stats).
 * `malta_housing/web/`: Local browser UI — filter/search listings, AI score column, sea proximity, sort by score, detail view with base/LLM breakdown, pros/cons.
 * `setup.ps1`: Windows PowerShell install (venv + pinned deps + `init-db` only).
-* `run_all.ps1`: Windows PowerShell — all scrapers in sequence, then parse, then db.
+* `run_all.ps1`: Windows PowerShell — all scrapers in sequence, then parse, db, and rank (`--new-only`).
 
 ### 3. Data Schema Standards
 
@@ -149,7 +153,7 @@ malta-housing-ai/
 | `is_shell_form` | `bool` | |
 | `seller_type` | `OWNER \| AGENT \| SENSAR \| UNKNOWN \| null` | |
 | `key_features` | `list[str]` | Max ~4 features |
-| `source` | `maltapark \| ownersbest \| djar \| propertymarket \| yitaku \| remax \| simonmamo \| null` | Portal origin |
+| `source` | `maltapark \| ownersbest \| djar \| propertymarket \| yitaku \| remax \| simonmamo \| belair \| null` | Portal origin |
 | `scraped_at` | `str \| null` | ISO timestamp from scrape |
 | `updated_at` | `str \| null` | ISO timestamp of last parse/DB write |
 | `distance_to_gzira_km` | `float \| null` | Estimated km to Gżira from `to_gzira.csv` |
@@ -166,7 +170,7 @@ malta-housing-ai/
 | `price_history` | `url`, `price_eur`, `recorded_at` — written on insert and whenever `price_eur` changes |
 | `evaluations` | Full AI result per URL: `ai_score`, `ai_summary`, `pros`, `cons`, `evaluation_json`, `evaluated_at` |
 
-On each `rank` evaluation, both `evaluations` and `listings` are updated. Previously evaluated URLs are skipped unless `--force`.
+On each `rank` evaluation, both `evaluations` and `listings` are updated. Previously evaluated URLs are skipped unless `--force`. `purge-scores` wipes the cache so the next `rank` treats all listings as unevaluated.
 
 ---
 
@@ -220,6 +224,8 @@ python -m malta_housing run --source djar --pages 3
 python -m malta_housing run --source propertymarket --pages 3
 python -m malta_housing run --source yitaku --pages 3
 python -m malta_housing run --source remax --pages 3
+python -m malta_housing run --source simonmamo --pages 3
+python -m malta_housing run --source belair --pages 3
 ```
 
 **Step by step:**
@@ -245,6 +251,14 @@ Listings outside the €100k–€400k band can be purged:
 ```bash
 python -m malta_housing purge-budget
 ```
+
+To clear all AI scores and evaluation cache (listings remain; `ai_score` becomes `NULL`):
+
+```bash
+python -m malta_housing purge-scores
+```
+
+Use before a full re-rank with `rank --force`, or after rubric changes when you want every listing re-evaluated from scratch.
 
 ### AI investment ranking (hybrid)
 
@@ -273,7 +287,7 @@ The command:
 | LLM adjustment (Ollama) | −2 … +2 | Text risks: emphyteusis, leasehold, dampness, no lift, hidden costs, renovation upside |
 | **Final** | 0–10 | `clamp(base_score + qualitative_adjustment, 0, 10)` |
 
-Tune thresholds in `malta_housing/analysis/scoring.py`. After changing the rubric, run `rank --force` to refresh cached scores.
+Tune thresholds in `malta_housing/analysis/scoring.py`. After changing the rubric, run `purge-scores` then `rank` (or `rank --force`) to refresh cached scores.
 
 **Evaluation JSON shape:**
 
@@ -348,6 +362,7 @@ ORDER BY ai_score DESC;
 | `serve [--host HOST] [--port PORT]` | Local listings browser |
 | `purge-gozo` | Remove Gozo listings from DB + JSON |
 | `purge-budget` | Remove listings outside €100k–€400k |
+| `purge-scores` | Clear all `evaluations` rows and NULL `ai_score` / `ai_summary` / `ai_evaluated_at` on listings |
 
 ---
 

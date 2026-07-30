@@ -9,7 +9,7 @@ import time
 from typing import Any
 from urllib.parse import urlencode
 
-from malta_housing.common import HttpClient, merge_staging, save_json_list
+from malta_housing.common import HttpClient, load_hidden_urls, merge_staging, save_json_list
 from malta_housing.geo import is_gozo_listing
 from malta_housing.models import ScrapedListing, utc_now_iso
 from malta_housing.paths import DATA_DIR, ensure_data_dir
@@ -189,6 +189,8 @@ def run_yitaku_scraper(max_pages: int = 3, *, write_csv: bool = True) -> list[di
     all_raw: list[dict[str, Any]] = []
     scraped_data: list[ScrapedListing] = []
     skipped_gozo = 0
+    skipped_hidden = 0
+    hidden_urls = load_hidden_urls()
     seen_ids: set[Any] = set()
 
     print(f"🚀 Rozpoczynam pobieranie z Yitaku API (strony 1-{max_pages})...\n")
@@ -214,6 +216,10 @@ def run_yitaku_scraper(max_pages: int = 3, *, write_csv: bool = True) -> list[di
 
             scraped = item_to_scraped(item)
             if scraped is None:
+                continue
+            if scraped.url in hidden_urls:
+                skipped_hidden += 1
+                print(f"   └─ Pominięto (ukryte): {scraped.url}")
                 continue
             locality = item.get("locality_name") or ""
             if is_gozo_listing(title=scraped.title, locality=locality, url=scraped.url):
@@ -244,7 +250,7 @@ def run_yitaku_scraper(max_pages: int = 3, *, write_csv: bool = True) -> list[di
     merged = merge_staging(scraped_data)
     print(
         f"\n✅ Zakończono! Pobrano {len(scraped_data)} ogłoszeń"
-        f" (pominięto {skipped_gozo} Gozo); "
+        f" (pominięto {skipped_gozo} Gozo, {skipped_hidden} ukryte); "
         f"staging ma teraz {len(merged)} unikalnych URL-i."
     )
     print("👉 Możesz teraz uruchomić: python -m malta_housing parse")

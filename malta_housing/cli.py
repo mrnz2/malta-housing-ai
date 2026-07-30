@@ -7,6 +7,7 @@ import sys
 
 from malta_housing.common import configure_stdio, ensure_source
 from malta_housing.db.store import (
+    clear_evaluations,
     delete_gozo_listings,
     delete_out_of_budget_listings,
     init_db,
@@ -106,6 +107,15 @@ def cmd_purge_gozo(_args: argparse.Namespace) -> None:
 
 def cmd_serve(args: argparse.Namespace) -> None:
     run_server(host=args.host, port=args.port)
+
+
+def cmd_purge_scores(_args: argparse.Namespace) -> None:
+    stats = clear_evaluations()
+    print(
+        f"✅ Score purge complete "
+        f"(evaluations_deleted={stats['evaluations_deleted']}, "
+        f"listings_cleared={stats['listings_cleared']})."
+    )
 
 
 def cmd_purge_budget(_args: argparse.Namespace) -> None:
@@ -232,6 +242,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Delete listings priced under €100k or over €400k from SQLite and parsed JSON",
     )
     p_purge_budget.set_defaults(func=cmd_purge_budget)
+
+    p_purge_scores = sub.add_parser(
+        "purge-scores",
+        help="Clear all AI scores and evaluations from SQLite (listings remain)",
+    )
+    p_purge_scores.set_defaults(func=cmd_purge_scores)
 
     p_rank = sub.add_parser(
         "rank",

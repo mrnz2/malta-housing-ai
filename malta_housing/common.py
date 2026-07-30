@@ -36,7 +36,9 @@ __all__ = [
     "resolve_source",
     "extract_title_and_text",
     "load_json_list",
+    "load_hidden_urls",
     "merge_staging",
+    "purge_hidden_from_json",
     "save_json_list",
     "strip_noise_tags",
 ]
@@ -281,11 +283,18 @@ def merge_staging(
     path: Path = STAGING_PATH,
 ) -> list[dict[str, Any]]:
     """Merge new scraped items into staging by URL (newer wins)."""
-    existing = {item["url"]: item for item in load_json_list(path) if "url" in item}
+    hidden_urls = load_hidden_urls()
+    existing = {
+        item["url"]: item
+        for item in load_json_list(path)
+        if "url" in item and item["url"] not in hidden_urls
+    }
     for item in new_items:
         payload = item.model_dump() if isinstance(item, ScrapedListing) else dict(item)
         if "source" not in payload:
             raise ValueError("Staging items must include 'source'")
+        if payload["url"] in hidden_urls:
+            continue
         existing[payload["url"]] = payload
     merged = list(existing.values())
     save_json_list(path, merged)
@@ -297,6 +306,28 @@ def append_jsonl(path: Path, record: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def load_hidden_urls() -> set[str]:
+    """URLs marked hidden in SQLite — skip scrape, parse, and rank."""
+    from malta_housing.db.store import get_hidden_urls
+
+    return get_hidden_urls()
+
+
+def purge_hidden_from_json(path: Path) -> int:
+    """Remove hidden listing URLs from a JSON list file. Returns count removed."""
+    hidden_urls = load_hidden_urls()
+    if not hidden_urls:
+        return 0
+    items = load_json_list(path)
+    if not items:
+        return 0
+    kept = [item for item in items if item.get("url") not in hidden_urls]
+    removed = len(items) - len(kept)
+    if removed:
+        save_json_list(path, kept)
+    return removed
 
 
 def ensure_source(value: str) -> SourceType:

@@ -175,7 +175,28 @@ def _row_to_listing(row: sqlite3.Row) -> dict[str, Any]:
                 data["price_per_sqm"] = round(float(raw), 2)
             except (TypeError, ValueError):
                 data["price_per_sqm"] = None
+    _parse_evaluation_summary(data)
     return data
+
+
+def _parse_evaluation_summary(data: dict[str, Any]) -> None:
+    """Normalize evaluation fields extracted from evaluation_json in list queries."""
+    breakdown = data.get("score_breakdown")
+    if isinstance(breakdown, str) and breakdown.strip():
+        try:
+            data["score_breakdown"] = json.loads(breakdown)
+        except json.JSONDecodeError:
+            data["score_breakdown"] = None
+    elif breakdown is not None and not isinstance(breakdown, dict):
+        data["score_breakdown"] = None
+
+    for key in ("base_score", "qualitative_adjustment"):
+        if key not in data or data[key] is None:
+            continue
+        try:
+            data[key] = float(data[key])
+        except (TypeError, ValueError):
+            data[key] = None
 
 
 def _latest_scrape_day(cur: sqlite3.Cursor) -> str | None:
@@ -401,7 +422,10 @@ def list_listings(
             f"""
             SELECT
                 {_LISTING_COLUMNS_QUALIFIED},
-                json_extract(e.evaluation_json, '$.metrics.price_per_sqm') AS price_per_sqm
+                json_extract(e.evaluation_json, '$.metrics.price_per_sqm') AS price_per_sqm,
+                json_extract(e.evaluation_json, '$.base_score') AS base_score,
+                json_extract(e.evaluation_json, '$.qualitative_adjustment') AS qualitative_adjustment,
+                json_extract(e.evaluation_json, '$.score_breakdown') AS score_breakdown
             FROM listings
             LEFT JOIN evaluations e ON e.url = listings.url
             {where_sql}

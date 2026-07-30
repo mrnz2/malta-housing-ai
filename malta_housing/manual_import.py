@@ -19,7 +19,7 @@ from malta_housing.common import (
     merge_staging,
 )
 from malta_housing.db.queries import get_listing_by_url
-from malta_housing.db.store import init_db, save_evaluation, save_listings_to_db
+from malta_housing.db.store import get_hidden_urls, init_db, save_evaluation, save_listings_to_db
 from malta_housing.geo import is_gozo_listing, is_gozo_record
 from malta_housing.models import ParsedListing, ScrapedListing, SourceType, utc_now_iso
 from malta_housing.parsing.llm import MODEL_NAME, parse_staged_item
@@ -231,6 +231,16 @@ def run_manual_pipeline(
         )
 
     resolved_url = _normalize_url_for_source(resolved_url, source)
+
+    if resolved_url in get_hidden_urls():
+        return {
+            "status": "skipped",
+            "step": "skipped",
+            "message": "Skipped: hidden listing",
+            "reason": "Hidden listing",
+            "url": resolved_url,
+            "source": source,
+        }
 
     step("extracting", f"Extracting with {source} parser…")
     scraped = listing_from_html(source, html, resolved_url)

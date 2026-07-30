@@ -315,12 +315,134 @@ function formatBankValuation(bank) {
   return rows.length ? `<dl class="bank-val-grid">${rows.join("")}</dl>` : "";
 }
 
-function formatBreakdown(breakdown) {
+function renderScoreBreakdownRows(breakdown) {
   if (!breakdown || typeof breakdown !== "object") return "";
-  return Object.entries(breakdown)
-    .map(([key, value]) => `${BREAKDOWN_LABELS[key] || key}: ${value}`)
-    .join(" · ");
+  const entries = Object.entries(breakdown);
+  if (!entries.length) return "";
+  return entries
+    .map(
+      ([key, value]) =>
+        `<div class="score-tooltip-row"><span class="score-tooltip-label">${escapeHtml(BREAKDOWN_LABELS[key] || key)}</span><span class="score-tooltip-points">${escapeHtml(formatScore(value))}</span></div>`
+    )
+    .join("");
 }
+
+function buildScoreTooltipContent(item) {
+  const score = item.ai_score;
+  if (score == null || Number.isNaN(Number(score))) return "";
+
+  const base = item.base_score;
+  const adj = item.qualitative_adjustment;
+  const headerSub =
+    base != null && adj != null
+      ? `base ${formatScore(base)} + LLM ${formatAdjustment(adj)}`
+      : "";
+
+  const breakdownHtml = renderScoreBreakdownRows(item.score_breakdown);
+  const summary = typeof item.ai_summary === "string" ? item.ai_summary.trim() : "";
+
+  let body = "";
+  if (breakdownHtml) {
+    body += `<div class="score-tooltip-breakdown">${breakdownHtml}</div>`;
+  } else if (summary) {
+    body += `<p class="score-tooltip-summary">${escapeHtml(summary)}</p>`;
+  } else {
+    body += `<p class="score-tooltip-fallback">Open detail for full evaluation.</p>`;
+  }
+
+  if (breakdownHtml && summary) {
+    body += `<p class="score-tooltip-summary">${escapeHtml(summary)}</p>`;
+  }
+
+  return `
+    <div class="score-tooltip-header">
+      <strong>${escapeHtml(formatScore(score))}/10</strong>
+      ${headerSub ? `<span class="score-tooltip-sub">${escapeHtml(headerSub)}</span>` : ""}
+    </div>
+    ${body}
+  `;
+}
+
+let scoreTooltipEl = null;
+let scoreTooltipAnchor = null;
+
+function getScoreTooltipEl() {
+  if (!scoreTooltipEl) {
+    scoreTooltipEl = document.createElement("div");
+    scoreTooltipEl.id = "score-tooltip";
+    scoreTooltipEl.className = "score-tooltip";
+    scoreTooltipEl.hidden = true;
+    scoreTooltipEl.setAttribute("role", "tooltip");
+    document.body.appendChild(scoreTooltipEl);
+  }
+  return scoreTooltipEl;
+}
+
+function positionScoreTooltip(anchor) {
+  const tooltip = getScoreTooltipEl();
+  const rect = anchor.getBoundingClientRect();
+  const margin = 8;
+  const gap = 6;
+
+  tooltip.hidden = false;
+  const tipRect = tooltip.getBoundingClientRect();
+
+  let left = rect.left + rect.width / 2 - tipRect.width / 2;
+  let top = rect.bottom + gap;
+
+  if (left + tipRect.width > window.innerWidth - margin) {
+    left = window.innerWidth - tipRect.width - margin;
+  }
+  if (left < margin) left = margin;
+
+  if (top + tipRect.height > window.innerHeight - margin) {
+    top = rect.top - tipRect.height - gap;
+  }
+  if (top < margin) top = margin;
+
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+
+function showScoreTooltip(item, anchor) {
+  const html = buildScoreTooltipContent(item);
+  if (!html) return;
+  const tooltip = getScoreTooltipEl();
+  tooltip.innerHTML = html;
+  scoreTooltipAnchor = anchor;
+  tooltip.hidden = false;
+  positionScoreTooltip(anchor);
+}
+
+function hideScoreTooltip() {
+  if (!scoreTooltipEl) return;
+  scoreTooltipEl.hidden = true;
+  scoreTooltipAnchor = null;
+}
+
+function wireScoreTooltip(wrap, item) {
+  const show = () => showScoreTooltip(item, wrap);
+  const hide = () => {
+    if (scoreTooltipAnchor === wrap) hideScoreTooltip();
+  };
+
+  wrap.addEventListener("mouseenter", show);
+  wrap.addEventListener("mouseleave", hide);
+  wrap.addEventListener("focus", show);
+  wrap.addEventListener("blur", hide);
+  wrap.addEventListener("click", (e) => e.stopPropagation());
+  wrap.addEventListener("mousedown", (e) => e.stopPropagation());
+}
+
+window.addEventListener(
+  "scroll",
+  () => {
+    if (scoreTooltipAnchor && !scoreTooltipEl?.hidden) {
+      positionScoreTooltip(scoreTooltipAnchor);
+    }
+  },
+  true
+);
 
 function formatDate(value) {
   if (value == null || value === "") return "—";
@@ -367,6 +489,7 @@ function renderNotesRow(id, notesText) {
 
 function renderRows(items) {
   els.body.innerHTML = "";
+  hideScoreTooltip();
   if (!items.length) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td colspan="${TABLE_COLS}"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
@@ -387,7 +510,7 @@ function renderRows(items) {
     const score = item.ai_score;
     const scoreCell = score == null
       ? `<td class="score-cell"><span class="score-missing">—</span></td>`
-      : `<td class="score-cell"><span class="score-badge ${scoreClass(score)}" title="${escapeHtml(item.ai_summary || "")}">${formatScore(score)}<span class="score-denom">/10</span></span></td>`;
+      : `<td class="score-cell"><span class="score-badge-wrap" tabindex="0" aria-label="AI score details"><span class="score-badge ${scoreClass(score)}">${formatScore(score)}<span class="score-denom">/10</span></span></span></td>`;
     tr.innerHTML = `
       <td>
         <div class="cell-title">${newBadge}${escapeHtml(item.title || "Untitled")}</div>
@@ -422,6 +545,8 @@ function renderRows(items) {
     const hideToggle = tr.querySelector(".hide-toggle");
     const hideCheck = tr.querySelector(".hide-check");
     const favBtn = tr.querySelector(".fav-btn");
+    const scoreWrap = tr.querySelector(".score-badge-wrap");
+    if (scoreWrap) wireScoreTooltip(scoreWrap, item);
     hideCheck.addEventListener("click", (e) => e.stopPropagation());
     favBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -595,6 +720,7 @@ function commitListings({ push = false } = {}) {
 }
 
 async function openDetail(id) {
+  hideScoreTooltip();
   const [listingRes, historyRes] = await Promise.all([
     fetch(`/api/listings/${id}`),
     fetch(`/api/listings/${id}/history`),
@@ -627,9 +753,14 @@ async function openDetail(id) {
         : `${formatScore(listing.ai_score)} / 10`;
     document.getElementById("detail-score").textContent = scoreText;
     const breakdownEl = document.getElementById("detail-score-breakdown");
-    const breakdownText = formatBreakdown(listing.score_breakdown);
-    breakdownEl.textContent = breakdownText;
-    breakdownEl.hidden = !breakdownText;
+    const breakdownHtml = renderScoreBreakdownRows(listing.score_breakdown);
+    if (breakdownHtml) {
+      breakdownEl.innerHTML = `<div class="score-breakdown-grid">${breakdownHtml}</div>`;
+      breakdownEl.hidden = false;
+    } else {
+      breakdownEl.innerHTML = "";
+      breakdownEl.hidden = true;
+    }
     const bankEl = document.getElementById("detail-bank-valuation");
     const bankHtml = formatBankValuation(listing.bank_valuation);
     bankEl.innerHTML = bankHtml;
