@@ -19,8 +19,8 @@ from malta_housing.models import ScrapedListing, utc_now_iso
 
 BASE_URL = "https://www.propertymarket.com.mt"
 SEARCH_URL = f"{BASE_URL}/for-sale/"
-# Site accepts page via ``pp`` only when the rest of the filter query is present.
-PAGE_QUERY = "li=&mnp=0&mxp=0&pc=-1&pt=0&nb=0&o=1&d=0&f="
+# Site accepts ``pp`` only when the full filter query is present (not bare ``?pp=N``).
+SEARCH_QUERY = "pt=0&currentLocations=&mnp=15&mxp=19&pc=0&nb=0&btnForSale=Search"
 SOURCE = "propertymarket"
 
 HEADERS = {
@@ -30,9 +30,10 @@ HEADERS = {
 
 
 def _page_url(page_num: int) -> str:
+    base = f"{SEARCH_URL}?{SEARCH_QUERY}"
     if page_num <= 1:
-        return SEARCH_URL
-    return f"{SEARCH_URL}?{PAGE_QUERY}&pp={page_num}"
+        return base
+    return f"{base}&pp={page_num}"
 
 
 def _normalize_listing_url(href: str) -> str | None:
@@ -81,13 +82,38 @@ def get_item_links_from_page(client: HttpClient, page_num: int) -> list[str]:
     soup = BeautifulSoup(response.text, "html.parser")
     links: set[str] = set()
 
-    for a_tag in soup.find_all("a", href=True):
-        normalized = _normalize_listing_url(a_tag["href"])
-        if normalized:
-            links.add(normalized)
+    for listing_div in soup.find_all("div", class_="searchResultListing"):
+        for a_tag in listing_div.find_all("a", href=True):
+            normalized = _normalize_listing_url(a_tag["href"])
+            if normalized:
+                links.add(normalized)
 
     print(f"   └─ Znaleziono {len(links)} unikalnych ogłoszeń na stronie {page_num}.")
     return list(links)
+
+
+def _meta_lines(soup: BeautifulSoup) -> list[str]:
+    lines: list[str] = []
+    for tag in soup.find_all("meta"):
+        key = tag.get("name") or tag.get("property") or tag.get("itemprop")
+        content = (tag.get("content") or "").strip()
+        if key and content:
+            lines.append(f"{key}: {content}")
+    return lines
+
+
+def _main_content_text(main: BeautifulSoup) -> str:
+    strip_noise_tags(main)
+    for element in main.find_all(
+        True,
+        class_=lambda c: bool(c)
+        and any(
+            token in " ".join(c if isinstance(c, list) else [c]).lower()
+            for token in ("advert", "adsbygoogle", "promo", "banner", "sponsor")
+        ),
+    ):
+        element.decompose()
+    return main.get_text(separator="\n", strip=True)
 
 
 def scrape_item_details(client: HttpClient, url: str) -> ScrapedListing | None:
@@ -103,22 +129,26 @@ def scrape_item_details(client: HttpClient, url: str) -> ScrapedListing | None:
         return None
 
     soup = BeautifulSoup(response.text, "html.parser")
-    title_tag = soup.find("h1") or soup.find("title")
-    title = title_tag.get_text(strip=True) if title_tag else "Brak tytułu"
+    main = soup.find("main")
+    meta_text = "\n".join(_meta_lines(soup))
+    main_text = _main_content_text(main) if main else ""
 
-    # Drop UI chrome and common ad / promo blocks before reading body text.
-    strip_noise_tags(soup)
-    for element in soup.find_all(
-        True,
-        class_=lambda c: bool(c)
-        and any(
-            token in " ".join(c if isinstance(c, list) else [c]).lower()
-            for token in ("advert", "adsbygoogle", "promo", "banner", "sponsor")
-        ),
-    ):
-        element.decompose()
+    parts = [part for part in (meta_text, main_text) if part]
+    raw_text = "\n\n".join(parts)
 
-    raw_text = soup.get_text(separator="\n", strip=True)
+    title_tag = None
+    if main:
+        title_tag = main.select_one("#myListingDetailsTitle h1") or main.find("h1")
+    if not title_tag:
+        og_title = soup.find("meta", property="og:title")
+        if og_title and og_title.get("content"):
+            title = og_title["content"].strip()
+        else:
+            title_tag = soup.find("title")
+            title = title_tag.get_text(strip=True) if title_tag else "Brak tytułu"
+    else:
+        title = title_tag.get_text(strip=True)
+
     if not raw_text:
         title, raw_text = extract_title_and_text(response.text)
 
