@@ -27,10 +27,9 @@ SEA_SCORES: dict[SeaProximity, float] = {
 }
 SEA_VIEW_BONUS = 0.25
 
-AREA_SWEET_MIN = 70
-AREA_SWEET_MAX = 130
-AREA_OK_MIN = 50
-AREA_OK_MAX = 160
+AREA_FLOOR_SQM = 50
+AREA_FULL_SCORE_SQM = 150
+AREA_MIN_SCORE = 0.2
 
 
 def _round_score(value: float) -> float:
@@ -74,11 +73,12 @@ def _score_area(area_sqm: int | float | None) -> float:
     if area_sqm is None:
         return 0.3
     area = float(area_sqm)
-    if AREA_SWEET_MIN <= area <= AREA_SWEET_MAX:
+    if area <= AREA_FLOOR_SQM:
+        return AREA_MIN_SCORE
+    if area >= AREA_FULL_SCORE_SQM:
         return MAX_AREA
-    if AREA_OK_MIN <= area < AREA_SWEET_MIN or AREA_SWEET_MAX < area <= AREA_OK_MAX:
-        return 0.6
-    return 0.2
+    ratio = (area - AREA_FLOOR_SQM) / (AREA_FULL_SCORE_SQM - AREA_FLOOR_SQM)
+    return _round_score(AREA_MIN_SCORE + (MAX_AREA - AREA_MIN_SCORE) * ratio)
 
 
 def _score_flags(metrics: dict[str, Any]) -> float:
@@ -136,6 +136,17 @@ if __name__ == "__main__":
             "has_airspace": False,
             "seller_type": "AGENT",
             "is_shell_form": True,
+        },
+        {
+            "price_per_sqm": 2200,
+            "distance_to_gzira_km": 3.0,
+            "sea_proximity": "blisko",
+            "area_sqm": 180,
+            "has_sea_view": False,
+            "is_freehold": True,
+            "has_airspace": False,
+            "seller_type": "OWNER",
+            "is_shell_form": False,
         },
     ]
     for i, metrics in enumerate(samples, 1):

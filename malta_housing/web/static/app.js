@@ -58,6 +58,11 @@ function euro(value) {
   }).format(Number(value));
 }
 
+function formatPricePerSqm(value) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  return euro(value);
+}
+
 function fillSelect(select, values, blankLabel = "All") {
   const current = select.value;
   select.innerHTML = "";
@@ -290,7 +295,7 @@ function scoreClass(value) {
   return "score-low";
 }
 
-const TABLE_COLS = 11;
+const TABLE_COLS = 12;
 
 function favIcon(isFav) {
   return isFav ? "♥" : "♡";
@@ -345,6 +350,7 @@ function renderRows(items) {
       <td class="price">${formatKm(item.distance_to_gzira_km)}</td>
       <td>${escapeHtml(formatSeaProximity(item.sea_proximity))}</td>
       <td class="price">${euro(item.price_eur)}</td>
+      <td class="price">${formatPricePerSqm(item.price_per_sqm)}</td>
       <td>${item.bedrooms ?? "—"}</td>
       <td>${escapeHtml(item.source || "—")}</td>
       <td class="ready-cell"><span class="ready-badge ${readyClass(item.ready)}">${formatReady(item.ready)}</span></td>

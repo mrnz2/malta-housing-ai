@@ -100,6 +100,15 @@ def _row_to_listing(row: sqlite3.Row) -> dict[str, Any]:
             data[flag] = False
     if "ready" in data and data["ready"] is not None:
         data["ready"] = bool(data["ready"])
+    if "price_per_sqm" in data:
+        raw = data["price_per_sqm"]
+        if raw is None:
+            pass
+        else:
+            try:
+                data["price_per_sqm"] = round(float(raw), 2)
+            except (TypeError, ValueError):
+                data["price_per_sqm"] = None
     return data
 
 
@@ -320,8 +329,10 @@ def list_listings(
         cur.execute(
             f"""
             SELECT
-                {_LISTING_COLUMNS}
+                {_LISTING_COLUMNS_QUALIFIED},
+                json_extract(e.evaluation_json, '$.metrics.price_per_sqm') AS price_per_sqm
             FROM listings
+            LEFT JOIN evaluations e ON e.url = listings.url
             {where_sql}
             ORDER BY {order_sql}
             LIMIT ? OFFSET ?
