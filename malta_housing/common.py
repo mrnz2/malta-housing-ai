@@ -64,7 +64,7 @@ DEFAULT_HEADERS = {
     "Accept-Language": "en-US,en;q=0.5",
 }
 
-RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+RETRYABLE_STATUS = {403, 429, 500, 502, 503, 504}
 
 _SG_REDIRECT_RE = re.compile(r'content="0;([^"]+)"', re.I)
 _SG_CHALLENGE_RE = re.compile(r'const\s+sgchallenge="([^"]+)"')
@@ -140,13 +140,18 @@ class HttpClient:
             self.session = requests.Session()
         self.session.headers.update(headers or DEFAULT_HEADERS)
 
-    def get(self, url: str) -> requests.Response:
+    def get(self, url: str, *, referer: str | None = None) -> requests.Response:
         last_error: Exception | None = None
+        req_headers = {"Referer": referer} if referer else None
         for attempt in range(1, self.max_retries + 1):
             try:
-                response = self.session.get(url, timeout=self.timeout)
+                response = self.session.get(
+                    url, timeout=self.timeout, headers=req_headers
+                )
                 if response.status_code in RETRYABLE_STATUS and attempt < self.max_retries:
                     wait = self.backoff_base * attempt
+                    if response.status_code == 403:
+                        wait = max(wait, 5.0)
                     retry_after = response.headers.get("Retry-After")
                     if retry_after and retry_after.isdigit():
                         wait = max(wait, float(retry_after))
@@ -160,7 +165,9 @@ class HttpClient:
                         )
                     print("🧩 SiteGround bot challenge — solving PoW…")
                     self._solve_siteground_challenge(url, response)
-                    response = self.session.get(url, timeout=self.timeout)
+                    response = self.session.get(
+                        url, timeout=self.timeout, headers=req_headers
+                    )
                     if _is_sg_challenge(response):
                         raise requests.HTTPError(
                             f"202 Accepted (bot challenge persists) for {url}",

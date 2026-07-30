@@ -19,8 +19,9 @@ from malta_housing.models import ScrapedListing, utc_now_iso
 
 BASE_URL = "https://www.propertymarket.com.mt"
 SEARCH_URL = f"{BASE_URL}/for-sale/"
-# Site accepts ``pp`` only when the full filter query is present (not bare ``?pp=N``).
+# Page 1 uses the search-form query; page 2+ uses a different shape (see pagination links).
 SEARCH_QUERY = "pt=0&currentLocations=&mnp=15&mxp=19&pc=0&nb=0&btnForSale=Search"
+PAGINATION_QUERY = "li=&mnp=15&mxp=19&pc=0&pt=0&nb=0&o=1&d=0&f="
 SOURCE = "propertymarket"
 
 HEADERS = {
@@ -30,10 +31,9 @@ HEADERS = {
 
 
 def _page_url(page_num: int) -> str:
-    base = f"{SEARCH_URL}?{SEARCH_QUERY}"
     if page_num <= 1:
-        return base
-    return f"{base}&pp={page_num}"
+        return f"{SEARCH_URL}?{SEARCH_QUERY}"
+    return f"{SEARCH_URL}?{PAGINATION_QUERY}&pp={page_num}"
 
 
 def _normalize_listing_url(href: str) -> str | None:
@@ -61,13 +61,15 @@ def _is_blocked_response(response) -> bool:
     return "sgcaptcha" in text or "Robot Challenge Screen" in text
 
 
-def get_item_links_from_page(client: HttpClient, page_num: int) -> list[str]:
+def get_item_links_from_page(
+    client: HttpClient, page_num: int, *, referer: str | None = None
+) -> list[str]:
     """Pobiera unikalne linki do ogłoszeń z Property Market (?pp=X)."""
     url = _page_url(page_num)
     print(f"🔎 [Property Market] Skanowanie strony {page_num}: {url}")
 
     try:
-        response = client.get(url)
+        response = client.get(url, referer=referer or f"{BASE_URL}/")
     except Exception as e:
         print(f"   └─ Błąd podczas pobierania strony {page_num}: {e}")
         return []
@@ -116,10 +118,12 @@ def _main_content_text(main: BeautifulSoup) -> str:
     return main.get_text(separator="\n", strip=True)
 
 
-def scrape_item_details(client: HttpClient, url: str) -> ScrapedListing | None:
+def scrape_item_details(
+    client: HttpClient, url: str, *, referer: str | None = None
+) -> ScrapedListing | None:
     """Pobiera treść pojedynczego ogłoszenia z Property Market."""
     try:
-        response = client.get(url)
+        response = client.get(url, referer=referer or f"{SEARCH_URL}?{SEARCH_QUERY}")
     except Exception as e:
         print(f"   └─ Błąd pobierania {url}: {e}")
         return None
@@ -172,10 +176,14 @@ def run_propertymarket_scraper(max_pages: int = 3) -> list[dict]:
 
     print(f"🚀 Rozpoczynam pobieranie z Property Market (strony 1-{max_pages})...\n")
 
+    last_listing_url = f"{BASE_URL}/"
     for page in range(1, max_pages + 1):
-        links = get_item_links_from_page(client, page)
+        links = get_item_links_from_page(client, page, referer=last_listing_url)
+        page_url = _page_url(page)
+        if links:
+            last_listing_url = page_url
         all_item_urls.update(links)
-        time.sleep(random.uniform(1.0, 2.5))
+        time.sleep(random.uniform(2.0, 3.5))
 
     print(f"\n📊 Łącznie zebrano {len(all_item_urls)} unikalnych ofert z Property Market.\n")
 
@@ -183,14 +191,14 @@ def run_propertymarket_scraper(max_pages: int = 3) -> list[dict]:
     skipped_gozo = 0
     for i, url in enumerate(all_item_urls, 1):
         print(f"[{i}/{len(all_item_urls)}] Pobieranie opisu: {url}")
-        item_data = scrape_item_details(client, url)
+        item_data = scrape_item_details(client, url, referer=last_listing_url)
         if item_data:
             if is_gozo_listing(title=item_data.title, url=item_data.url):
                 skipped_gozo += 1
                 print("   └─ Pominięto (Gozo).")
             else:
                 scraped_data.append(item_data)
-        time.sleep(random.uniform(1.0, 2.5))
+        time.sleep(random.uniform(2.0, 3.5))
 
     merged = merge_staging(scraped_data)
     print(
