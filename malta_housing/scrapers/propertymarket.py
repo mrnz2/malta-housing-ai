@@ -22,6 +22,14 @@ BASE_URL = "https://www.propertymarket.com.mt"
 SEARCH_URL = f"{BASE_URL}/for-sale/"
 # mnp/mxp ≈ €150k–€190k on this portal's price index scale.
 _PRICE_FILTER = "mnp=15&mxp=19"
+# Malta locality IDs from portal search (excludes Gozo).
+_LOCATION_IDS = (
+    "131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,"
+    "150,151,152,153,174,175,176,178,179,180,182,184,185,186,187,188,189,190,191,192,"
+    "193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,"
+    "213,214,215,219,216,217,218,220,221,222,223,250,224,225,226,227,228,229,230,231,"
+    "232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249"
+)
 SOURCE = "propertymarket"
 
 _LISTING_PRICE_EUR_RE = re.compile(r"€\s*([\d,]+)")
@@ -42,12 +50,11 @@ HEADERS = {
     "Referer": f"{BASE_URL}/",
 }
 
-def _profile_queries(sort_code: str) -> tuple[str, str]:
-    search = (
-        f"pt=0&currentLocations=&{_PRICE_FILTER}&pc=0&nb=0&o={sort_code}&btnForSale=Search"
+def _search_query(*, sort_code: str, page_num: int) -> str:
+    return (
+        f"li={_LOCATION_IDS}&{_PRICE_FILTER}&pc=0&pt=0&nb=0"
+        f"&o={sort_code}&d=0&f=&pp={page_num}"
     )
-    pagination = f"li=&{_PRICE_FILTER}&pc=0&pt=0&nb=0&o={sort_code}&d=0&f="
-    return search, pagination
 
 
 def _abs_url(href: str) -> str:
@@ -55,10 +62,7 @@ def _abs_url(href: str) -> str:
 
 
 def _page_url(page_num: int, *, sort_code: str = "1") -> str:
-    search_query, pagination_query = _profile_queries(sort_code)
-    if page_num <= 1:
-        return f"{SEARCH_URL}?{search_query}"
-    return f"{SEARCH_URL}?{pagination_query}&pp={page_num}"
+    return f"{SEARCH_URL}?{_search_query(sort_code=sort_code, page_num=page_num)}"
 
 
 def _pagination_url(soup: BeautifulSoup, page_num: int) -> str | None:
