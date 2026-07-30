@@ -1,9 +1,24 @@
 const PAGE_SIZE = 50;
+const DEFAULT_SORT = "ai_score_desc";
+const FILTER_KEYS = [
+  "q",
+  "locality",
+  "source",
+  "seller_type",
+  "property_type",
+  "min_price",
+  "max_price",
+  "freehold",
+  "airspace",
+  "show_hidden",
+  "fav_only",
+  "sort",
+];
 
 const state = {
   offset: 0,
   total: 0,
-  filters: { sort: "ai_score_desc" },
+  filters: { sort: DEFAULT_SORT },
 };
 
 const els = {
@@ -69,7 +84,72 @@ function readFilters() {
       filters[key] = value.trim();
     }
   }
+  if (!filters.sort) {
+    filters.sort = DEFAULT_SORT;
+  }
   return filters;
+}
+
+function pageFromOffset(offset) {
+  return Math.floor(offset / PAGE_SIZE) + 1;
+}
+
+function offsetFromPage(page) {
+  const n = Number.parseInt(String(page), 10);
+  if (!Number.isFinite(n) || n < 1) return 0;
+  return (n - 1) * PAGE_SIZE;
+}
+
+function readUrlState() {
+  const params = new URLSearchParams(window.location.search);
+  const filters = { sort: DEFAULT_SORT };
+  for (const key of FILTER_KEYS) {
+    const value = params.get(key);
+    if (value != null && value.trim() !== "") {
+      filters[key] = value.trim();
+    }
+  }
+  return {
+    filters,
+    offset: offsetFromPage(params.get("page")),
+  };
+}
+
+function applyStateToForm(filters) {
+  for (const element of els.form.elements) {
+    if (!element.name) continue;
+    if (element.type === "checkbox") {
+      element.checked = element.name in filters;
+    } else {
+      element.value = filters[element.name] ?? "";
+    }
+  }
+  if (els.sortSelect) {
+    els.sortSelect.value = filters.sort || DEFAULT_SORT;
+  }
+}
+
+function syncUrl({ push = false } = {}) {
+  const params = new URLSearchParams();
+  for (const key of FILTER_KEYS) {
+    const value = state.filters[key];
+    if (value == null || String(value).trim() === "") continue;
+    if (key === "sort" && value === DEFAULT_SORT) continue;
+    params.set(key, String(value).trim());
+  }
+  const page = pageFromOffset(state.offset);
+  if (page > 1) {
+    params.set("page", String(page));
+  }
+  const qs = params.toString();
+  const target = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+  const current = `${window.location.pathname}${window.location.search}`;
+  if (current === target) return;
+  if (push) {
+    history.pushState(null, "", target);
+  } else {
+    history.replaceState(null, "", target);
+  }
 }
 
 function buildQuery(extra = {}) {
@@ -109,7 +189,7 @@ function setScoreSort(direction) {
   state.filters = { ...state.filters, sort };
   state.offset = 0;
   syncSortHeader();
-  loadListings();
+  commitListings({ push: true });
 }
 
 function flagsFor(item) {
@@ -421,11 +501,27 @@ function escapeHtml(text) {
     .replaceAll('"', "&quot;");
 }
 
-async function loadListings() {
+function clampOffset() {
+  if (state.total <= 0) {
+    state.offset = 0;
+    return false;
+  }
+  const maxOffset = Math.max(0, Math.floor((state.total - 1) / PAGE_SIZE) * PAGE_SIZE);
+  if (state.offset <= maxOffset) return false;
+  state.offset = maxOffset;
+  return true;
+}
+
+async function loadListings({ syncUrl: shouldSyncUrl = false, push = false } = {}) {
   els.count.textContent = "Loading…";
   const res = await fetch(`/api/listings?${buildQuery()}`);
   const data = await res.json();
   state.total = data.total || 0;
+  if (clampOffset()) {
+    if (shouldSyncUrl) syncUrl({ push });
+    return loadListings();
+  }
+  if (shouldSyncUrl) syncUrl({ push });
   renderRows(data.items || []);
   const from = state.total === 0 ? 0 : state.offset + 1;
   const to = Math.min(state.offset + PAGE_SIZE, state.total);
@@ -438,6 +534,10 @@ async function loadListings() {
   els.prev.disabled = state.offset <= 0;
   els.next.disabled = state.offset + PAGE_SIZE >= state.total;
   syncSortHeader();
+}
+
+function commitListings({ push = false } = {}) {
+  return loadListings({ syncUrl: true, push });
 }
 
 async function openDetail(id) {
@@ -564,14 +664,14 @@ els.form.addEventListener("submit", (e) => {
   e.preventDefault();
   state.filters = readFilters();
   state.offset = 0;
-  loadListings();
+  commitListings({ push: true });
 });
 
 els.form.addEventListener("reset", () => {
   setTimeout(() => {
-    state.filters = { sort: "ai_score_desc" };
+    state.filters = { sort: DEFAULT_SORT };
     state.offset = 0;
-    loadListings();
+    commitListings({ push: true });
   }, 0);
 });
 
@@ -585,11 +685,19 @@ if (els.sortScore) {
 
 els.prev.addEventListener("click", () => {
   state.offset = Math.max(0, state.offset - PAGE_SIZE);
-  loadListings();
+  commitListings({ push: true });
 });
 
 els.next.addEventListener("click", () => {
   state.offset += PAGE_SIZE;
+  commitListings({ push: true });
+});
+
+window.addEventListener("popstate", () => {
+  const urlState = readUrlState();
+  state.filters = urlState.filters;
+  state.offset = urlState.offset;
+  applyStateToForm(urlState.filters);
   loadListings();
 });
 
@@ -598,5 +706,11 @@ els.dialog.addEventListener("click", (e) => {
   if (e.target === els.dialog) els.dialog.close();
 });
 
+const initialUrlState = readUrlState();
+state.filters = initialUrlState.filters;
+state.offset = initialUrlState.offset;
+
 await loadStats();
+applyStateToForm(initialUrlState.filters);
+syncUrl();
 await loadListings();
