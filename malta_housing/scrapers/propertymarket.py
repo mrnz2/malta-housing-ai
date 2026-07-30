@@ -216,24 +216,20 @@ def apply_propertymarket_price_correction(
 
 def _strip_listing_noise(soup: BeautifulSoup) -> None:
     """Remove mortgage calculator, sponsored blocks, and similar non-listing content."""
-    for element in soup.find_all(
-        True,
-        id=lambda value: value and "mortgage" in str(value).lower(),
-    ):
-        element.decompose()
-    for element in soup.find_all(
-        True,
-        class_=lambda value: bool(value)
-        and any(
-            token in " ".join(value if isinstance(value, list) else [value]).lower()
-            for token in ("mortgage", "sponsored", "advert", "adsbygoogle")
-        ),
-    ):
-        element.decompose()
-    for text_node in soup.find_all(string=re.compile(r"Mortgage Calculator|Sponsored", re.I)):
-        parent = text_node.find_parent(["div", "section", "aside", "form"])
-        if parent is not None:
-            parent.decompose()
+    for tag in soup.find_all(id=re.compile(r"mortgage", re.I)):
+        tag.decompose()
+
+    for tag in soup.find_all(class_=re.compile(r"mortgage|sponsored|advert|adsbygoogle", re.I)):
+        tag.decompose()
+
+    for heading in soup.find_all(["h2", "h3", "h4"]):
+        text = heading.get_text(" ", strip=True).lower()
+        if text in {"mortgage calculator", "sponsored"}:
+            block = heading.find_parent(["div", "section", "aside", "form"])
+            if block is not None:
+                block.decompose()
+            else:
+                heading.decompose()
 
 
 def _meta_lines(soup: BeautifulSoup) -> list[str]:
@@ -248,14 +244,7 @@ def _meta_lines(soup: BeautifulSoup) -> list[str]:
 
 def _main_content_text(main: BeautifulSoup) -> str:
     strip_noise_tags(main)
-    for element in main.find_all(
-        True,
-        class_=lambda c: bool(c)
-        and any(
-            token in " ".join(c if isinstance(c, list) else [c]).lower()
-            for token in ("advert", "adsbygoogle", "promo", "banner", "sponsor")
-        ),
-    ):
+    for element in main.find_all(class_=re.compile(r"advert|adsbygoogle|promo|banner|sponsor", re.I)):
         element.decompose()
     return main.get_text(separator="\n", strip=True)
 
