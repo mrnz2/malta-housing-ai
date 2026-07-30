@@ -223,6 +223,9 @@ def _annotate_is_new(items: list[dict[str, Any]]) -> None:
 
 _VISIBLE = "(is_hidden = 0 OR is_hidden IS NULL)"
 _HIDDEN = "is_hidden = 1"
+# Qualified for list_listings (SELECT joins evaluations, which also has url).
+_VISIBLE_LIST = "(listings.is_hidden = 0 OR listings.is_hidden IS NULL)"
+_HIDDEN_LIST = "listings.is_hidden = 1"
 
 
 def get_stats(db_name: str | Path = DB_PATH) -> dict[str, Any]:
@@ -348,38 +351,40 @@ def list_listings(
     params: list[Any] = []
 
     if show_hidden:
-        where.append(_HIDDEN)
+        where.append(_HIDDEN_LIST)
     else:
-        where.append(_VISIBLE)
+        where.append(_VISIBLE_LIST)
 
     if q:
-        where.append("(title LIKE ? OR locality LIKE ? OR url LIKE ?)")
+        where.append(
+            "(listings.title LIKE ? OR listings.locality LIKE ? OR listings.url LIKE ?)"
+        )
         like = f"%{q}%"
         params.extend([like, like, like])
     if locality:
-        where.append("locality = ?")
+        where.append("listings.locality = ?")
         params.append(locality)
     if source:
-        where.append("source = ?")
+        where.append("listings.source = ?")
         params.append(source)
     if seller_type:
-        where.append("seller_type = ?")
+        where.append("listings.seller_type = ?")
         params.append(seller_type)
     if property_type:
-        where.append("property_type = ?")
+        where.append("listings.property_type = ?")
         params.append(property_type)
     if min_price is not None:
-        where.append("price_eur >= ?")
+        where.append("listings.price_eur >= ?")
         params.append(min_price)
     if max_price is not None:
-        where.append("price_eur <= ?")
+        where.append("listings.price_eur <= ?")
         params.append(max_price)
     if freehold is True:
-        where.append("is_freehold = 1")
+        where.append("listings.is_freehold = 1")
     if airspace is True:
-        where.append("has_airspace = 1")
+        where.append("listings.has_airspace = 1")
     if fav_only:
-        where.append("is_fav = 1")
+        where.append("listings.is_fav = 1")
 
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
     order_sql = _LIST_ORDER_SQL.get(sort, _LIST_ORDER_SQL["created_desc"])
