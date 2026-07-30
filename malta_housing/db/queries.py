@@ -544,6 +544,9 @@ def _enrich_with_evaluation(row: dict[str, Any]) -> dict[str, Any]:
                 "qualitative_adjustment",
                 "score_breakdown",
                 "metrics",
+                "bank_valuation",
+                "buyer_warnings_pl",
+                "valuation_facts",
             ):
                 if key in evaluation and key not in row:
                     row[key] = evaluation[key]

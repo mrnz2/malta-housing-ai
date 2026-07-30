@@ -20,6 +20,8 @@ class LocalityProfile(TypedDict):
     gzira_km: float
     sea_proximity: SeaProximity | None
     region: str | None
+    eur_per_sqm_min: float | None
+    eur_per_sqm_max: float | None
 
 
 # Common scraper/LLM locality spellings → CSV town keys (normalized).
@@ -65,6 +67,84 @@ _ALIASES: dict[str, str] = {
     "santa lucia": "santa lucija",
     "rabat malta": "rabat",
 }
+
+
+def _parse_eur_per_sqm_range(value: str) -> tuple[float, float] | None:
+    """Parse '2900 - 4100' or '2900-4100' into (min, max) EUR/m²."""
+    if not value or not str(value).strip():
+        return None
+    numbers = re.findall(r"[\d]+(?:[.,]\d+)?", str(value).replace(",", ""))
+    if len(numbers) < 2:
+        return None
+    try:
+        low = float(numbers[0].replace(",", "."))
+        high = float(numbers[1].replace(",", "."))
+    except ValueError:
+        return None
+    if low <= 0 or high <= 0:
+        return None
+    if low > high:
+        low, high = high, low
+    return (low, high)
+
+
+def interpolate_rate(min_rate: float, max_rate: float, position: float) -> float:
+    """Linear interpolation within a locality €/m² range (position 0.0–1.0)."""
+    pos = max(0.0, min(1.0, position))
+    return round(min_rate + (max_rate - min_rate) * pos, 2)
+
+
+_PENTHOUSE_TYPES = frozenset(
+    {"penthouse", "duplex penthouse", "penthouse apartment"}
+)
+_TOWNHOUSE_TYPES = frozenset(
+    {"townhouse", "terraced house", "character house", "house of character", "villa"}
+)
+
+
+def _normalize_property_type(property_type: str | None) -> str:
+    if not property_type:
+        return ""
+    return property_type.strip().lower()
+
+
+def is_penthouse_or_seafront(property_type: str | None, facts: dict) -> bool:
+    ptype = _normalize_property_type(property_type)
+    if any(token in ptype for token in ("penthouse", "seafront")):
+        return True
+    if facts.get("micro_zone") == "seafront":
+        return True
+    if facts.get("has_sea_view") and facts.get("sea_proximity") == "nad_morzem":
+        return True
+    return False
+
+
+def resolve_base_rate_position(property_type: str | None, facts: dict) -> float:
+    """Pick conservative position in CSV range based on property type and view."""
+    if is_penthouse_or_seafront(property_type, facts):
+        return 0.80
+    if facts.get("has_sea_view") or facts.get("micro_zone") in {"premium", "seafront"}:
+        return 0.60
+    ptype = _normalize_property_type(property_type)
+    if any(token in ptype for token in _TOWNHOUSE_TYPES):
+        return 0.45
+    return 0.30
+
+
+def resolve_base_rate(
+    locality: str | None,
+    property_type: str | None,
+    facts: dict,
+    *,
+    csv_path: str | None = None,
+) -> float | None:
+    """Return base €/m² internal rate for a listing (before rate modifiers)."""
+    rate_range = eur_per_sqm_range_for(locality, csv_path=csv_path)
+    if rate_range is None:
+        return None
+    min_rate, max_rate = rate_range
+    position = resolve_base_rate_position(property_type, facts)
+    return interpolate_rate(min_rate, max_rate, position)
 
 
 def _parse_km(value: str) -> float | None:
@@ -138,13 +218,22 @@ def load_locality_profiles(csv_path: str | None = None) -> dict[str, LocalityPro
                 or ""
             ).strip()
             region = (row.get("Region") or row.get("region") or "").strip() or None
+            rate_raw = (
+                row.get("Szacowana stawka €/m2")
+                or row.get("Szacowana stawka EUR/m2")
+                or row.get("eur_per_sqm")
+                or ""
+            ).strip()
             km = _parse_km(distance_raw)
             if not locality or km is None:
                 continue
+            rate_range = _parse_eur_per_sqm_range(rate_raw)
             profile: LocalityProfile = {
                 "gzira_km": km,
                 "sea_proximity": _normalize_sea_proximity(sea_raw),
                 "region": region,
+                "eur_per_sqm_min": rate_range[0] if rate_range else None,
+                "eur_per_sqm_max": rate_range[1] if rate_range else None,
             }
             for key in _csv_key_variants(locality):
                 mapping[key] = profile
@@ -238,3 +327,32 @@ def sea_proximity_for(
     """Return sea proximity category for a locality, or None if unknown."""
     profile = _lookup_profile(locality, csv_path)
     return profile["sea_proximity"] if profile else None
+
+
+def eur_per_sqm_range_for(
+    locality: str | None,
+    csv_path: str | None = None,
+) -> tuple[float, float] | None:
+    """Return (min, max) €/m² for a locality from to_gzira.csv."""
+    profile = _lookup_profile(locality, csv_path)
+    if not profile:
+        return None
+    min_rate = profile.get("eur_per_sqm_min")
+    max_rate = profile.get("eur_per_sqm_max")
+    if min_rate is None or max_rate is None:
+        return None
+    return (min_rate, max_rate)
+
+
+def locality_rate_tier(locality: str | None, csv_path: str | None = None) -> str:
+    """Classify locality as high/mid/entry tier from CSV range width and level."""
+    rate_range = eur_per_sqm_range_for(locality, csv_path=csv_path)
+    if rate_range is None:
+        return "mid"
+    min_rate, max_rate = rate_range
+    mid = (min_rate + max_rate) / 2
+    if mid >= 4000:
+        return "high"
+    if mid >= 2800:
+        return "mid"
+    return "entry"

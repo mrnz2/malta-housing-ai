@@ -268,12 +268,52 @@ function formatScore(value) {
 }
 
 const BREAKDOWN_LABELS = {
+  value_vs_market: "Value vs market",
+  location_quality: "Location",
+  property_fit: "Property fit",
+  finish_amenities: "Finish & amenities",
+  legal_safety: "Legal safety",
   price_per_sqm: "Price/m²",
   distance_to_gzira: "Distance to Gżira",
   sea_proximity: "Sea proximity",
   area_sqm: "Area",
   structured_flags: "Property flags",
 };
+
+function formatBankValuation(bank) {
+  if (!bank || typeof bank !== "object") return "";
+  const rows = [];
+  if (bank.estimated_value_eur != null) {
+    const low = bank.estimated_range_low_eur;
+    const high = bank.estimated_range_high_eur;
+    const range =
+      low != null && high != null
+        ? ` (${euro(low)} – ${euro(high)})`
+        : "";
+    rows.push(`<dt>Szacowana wartość</dt><dd>${euro(bank.estimated_value_eur)}${range}</dd>`);
+  }
+  if (bank.gap_pct != null) {
+    const sign = Number(bank.gap_pct) > 0 ? "+" : "";
+    rows.push(`<dt>Luka ceny</dt><dd>${sign}${bank.gap_pct}%</dd>`);
+  }
+  if (bank.bank_risk) {
+    const riskClass =
+      bank.bank_risk === "Wysokie"
+        ? "risk-high"
+        : bank.bank_risk === "Średnie"
+          ? "risk-medium"
+          : "risk-low";
+    rows.push(`<dt>Ryzyko bankowe</dt><dd class="${riskClass}">${escapeHtml(bank.bank_risk)}</dd>`);
+  }
+  if (bank.confidence) {
+    rows.push(`<dt>Confidence</dt><dd>${escapeHtml(bank.confidence)}</dd>`);
+  }
+  const rate = bank.components?.adjusted_rate_eur_per_sqm;
+  if (rate != null) {
+    rows.push(`<dt>Stawka €/m²</dt><dd>${euro(rate)}</dd>`);
+  }
+  return rows.length ? `<dl class="bank-val-grid">${rows.join("")}</dl>` : "";
+}
 
 function formatBreakdown(breakdown) {
   if (!breakdown || typeof breakdown !== "object") return "";
@@ -590,7 +630,22 @@ async function openDetail(id) {
     const breakdownText = formatBreakdown(listing.score_breakdown);
     breakdownEl.textContent = breakdownText;
     breakdownEl.hidden = !breakdownText;
+    const bankEl = document.getElementById("detail-bank-valuation");
+    const bankHtml = formatBankValuation(listing.bank_valuation);
+    bankEl.innerHTML = bankHtml;
+    bankEl.hidden = !bankHtml;
     document.getElementById("detail-summary").textContent = listing.ai_summary || "";
+    const warnings = [
+      ...(Array.isArray(listing.buyer_warnings_pl) ? listing.buyer_warnings_pl : []),
+      ...(Array.isArray(listing.bank_valuation?.sanity_flags)
+        ? listing.bank_valuation.sanity_flags
+        : []),
+    ].filter(Boolean);
+    const warningsEl = document.getElementById("detail-warnings");
+    warningsEl.innerHTML = warnings.length
+      ? warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("")
+      : "";
+    warningsEl.hidden = !warnings.length;
     const pros = Array.isArray(listing.pros) ? listing.pros : [];
     const cons = Array.isArray(listing.cons) ? listing.cons : [];
     document.getElementById("detail-pros").innerHTML = pros.length

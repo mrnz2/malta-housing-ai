@@ -85,16 +85,17 @@ Windows all-portals: `.\run_all.ps1 -Pages 3` (`-Force` → parse `--force`).
 
 Use project venv: `venv\Scripts\python.exe` (Windows).
 
-## AI evaluation (hybrid)
+## AI evaluation (hybrid + bank valuation)
 
 * Model: `qwen2.5:7b` via Ollama (same as parse)
-* **Base score** (`scoring.py`, 0–8): deterministic from `price_per_sqm`, `distance_to_gzira_km`, `sea_proximity` (from `to_gzira.csv`: `nad_morzem` / `blisko` / `daleko`), `area_sqm` (regex from `raw_text`), and flags (`is_freehold`, `has_airspace`, `is_shell_form`, `seller_type`)
-* **LLM adjustment** (`evaluator.py`, −2 … +2): qualitative risks/opportunities from `raw_text` only — emphyteusis, leasehold, dampness, no lift, hidden costs, etc.
+* **Bank valuation** (`valuation.py`): deterministic EUR estimate from `to_gzira.csv` €/m² range (position by property type/view), internal/external m², finish/lift/condition/airspace modifiers, fixed garage € premium, temporary ground-rent deduction; sanity flags when price/estimate ratio &lt;0.6 or &gt;1.5
+* **Base score** (`scoring.py`, 0–8): `value_vs_market` (price vs bank estimate, capped when `confidence: low`), `location_quality`, `property_fit`, `finish_amenities`, `legal_safety`
+* **LLM adjustment** (`evaluator.py`, −2 … +2): extracts `valuation_facts` from `raw_text` (areas, floor, lift, garage optional/included, perpetual vs temporary ċens) + qualitative pros/cons + `buyer_warnings_pl`
 * **Final score**: `clamp(base_score + qualitative_adjustment, 0, 10)` → stored as `ai_score` / `investment_score`
 * Entry point: `evaluate_listing(listing: ParsedListing, raw_text: str) -> dict`
-* Returns: `investment_score`, `base_score`, `qualitative_adjustment`, `score_breakdown`, `pros`, `cons`, `summary`, `metrics`
-* `run_rank()` in `ranker.py`: fetch DB candidates → evaluate uncached → `save_evaluation()` → console report
-* Web UI reads `ai_score` from `listings`; detail view joins `evaluations` for pros/cons and score breakdown from `evaluation_json`
+* Returns: `investment_score`, `base_score`, `qualitative_adjustment`, `score_breakdown`, `bank_valuation`, `valuation_facts`, `buyer_warnings_pl`, `pros`, `cons`, `summary`, `metrics`
+* `run_rank()` in `ranker.py`: fetch DB candidates → evaluate uncached → `save_evaluation()` → console report (wycena + ryzyko bankowe)
+* Web UI reads `ai_score` from `listings`; detail view shows bank valuation, risk, warnings from `evaluation_json`
 * Default browser sort: `ai_score_desc`
 * After rubric changes: `python -m malta_housing rank --force` to refresh cached scores
 * `init-db` backfills `distance_to_gzira_km` and `sea_proximity` from locality + `to_gzira.csv`
@@ -120,8 +121,9 @@ Use project venv: `venv\Scripts\python.exe` (Windows).
 * `requirements.txt` — pinned deps including `curl_cffi`, `ollama`
 * `setup.ps1` — venv + install + `init-db`
 * `run_all.ps1` — all scrapers → parse → db
-* `to_gzira.csv` — locality profiles: km to Gżira + sea proximity (`Dystans do morza`)
+* `to_gzira.csv` — locality profiles: km to Gżira, sea proximity, €/m² range (`Szacowana stawka €/m2`)
 * `scraper_propertymarket.py` — thin launcher only; real logic in package
-* `malta_housing/analysis/scoring.py` — deterministic base score rubric
+* `malta_housing/analysis/valuation.py` — bank-style EUR valuation engine
+* `malta_housing/analysis/scoring.py` — deterministic base score rubric (bank-aligned)
 * `malta_housing/analysis/evaluator.py` — hybrid scorer (base + LLM adjustment)
 * `malta_housing/analysis/ranker.py` — batch rank CLI logic

@@ -81,6 +81,64 @@ def _score_line(row: dict[str, Any]) -> str:
     return f"SCORE {score}/10"
 
 
+def _valuation_line(row: dict[str, Any]) -> str | None:
+    bank = row.get("bank_valuation")
+    if not isinstance(bank, dict):
+        payload = row.get("evaluation_json")
+        if isinstance(payload, str) and payload.strip():
+            try:
+                data = json.loads(payload)
+                bank = data.get("bank_valuation")
+            except json.JSONDecodeError:
+                bank = None
+    if not isinstance(bank, dict):
+        return None
+
+    estimate = bank.get("estimated_value_eur")
+    asking = bank.get("asking_price_eur") or row.get("price_eur")
+    gap_pct = bank.get("gap_pct")
+    risk = bank.get("bank_risk") or "—"
+    confidence = bank.get("confidence") or "—"
+
+    parts: list[str] = []
+    if estimate is not None:
+        low = bank.get("estimated_range_low_eur")
+        high = bank.get("estimated_range_high_eur")
+        if low is not None and high is not None:
+            parts.append(f"Wycena: {_format_price(estimate)} ({_format_price(low)}–{_format_price(high)})")
+        else:
+            parts.append(f"Wycena: {_format_price(estimate)}")
+    if asking is not None:
+        parts.append(f"Cena: {_format_price(asking)}")
+    if gap_pct is not None:
+        sign = "+" if float(gap_pct) > 0 else ""
+        parts.append(f"Luka: {sign}{gap_pct}%")
+    parts.append(f"Ryzyko: {risk}")
+    parts.append(f"Confidence: {confidence}")
+    return " | ".join(parts)
+
+
+def _sanity_line(row: dict[str, Any]) -> str | None:
+    bank = row.get("bank_valuation")
+    warnings = row.get("buyer_warnings_pl") or []
+    if not isinstance(bank, dict):
+        payload = row.get("evaluation_json")
+        if isinstance(payload, str) and payload.strip():
+            try:
+                data = json.loads(payload)
+                bank = data.get("bank_valuation")
+                warnings = warnings or data.get("buyer_warnings_pl") or []
+            except json.JSONDecodeError:
+                bank = None
+    if not isinstance(bank, dict):
+        return None
+    flags = bank.get("sanity_flags") or []
+    bits = [str(x) for x in flags if x] + [str(x) for x in warnings if x]
+    if not bits:
+        return None
+    return "⚠ " + "; ".join(bits[:3])
+
+
 def _breakdown_line(row: dict[str, Any]) -> str | None:
     breakdown = row.get("score_breakdown")
     if not isinstance(breakdown, dict) or not breakdown:
@@ -145,11 +203,17 @@ def _print_report(ranked: list[dict[str, Any]], *, top: int, max_price: int | No
         cons = row.get("cons") or []
         summary = row.get("ai_summary") or row.get("summary") or ""
         breakdown_txt = _breakdown_line(row)
+        valuation_txt = _valuation_line(row)
+        sanity_txt = _sanity_line(row)
 
         print()
         print(f" #{idx:<2} {_score_line(row)}  {_format_price(row.get('price_eur'))}  "
               f"{locality}  {bed_txt}{prop_type}")
         print(f"     {dist_txt}  |  {sea_txt}  |  {size_txt}")
+        if valuation_txt:
+            print(f"     {valuation_txt}")
+        if sanity_txt:
+            print(f"     {sanity_txt}")
         print(f"     {flags_txt}")
         if breakdown_txt:
             print(f"     {breakdown_txt}")
