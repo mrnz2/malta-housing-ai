@@ -82,6 +82,27 @@ class MaltaPropertySchema(BaseModel):
         default_factory=list, description="Max 4 najważniejsze atuty nieruchomości"
     )
 
+    @field_validator("price_eur", "bedrooms", mode="before")
+    @classmethod
+    def coerce_int_fields(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, bool):
+            return int(v)
+        if isinstance(v, float):
+            return round(v)
+        if isinstance(v, int):
+            return v
+        if isinstance(v, str):
+            cleaned = v.replace(",", "").replace(" ", "").replace("€", "").strip()
+            if not cleaned:
+                return None
+            try:
+                return round(float(cleaned))
+            except ValueError:
+                return None
+        return v
+
     @field_validator("is_freehold", "has_airspace", "has_sea_view", "is_shell_form", mode="before")
     @classmethod
     def convert_null_to_bool(cls, v):

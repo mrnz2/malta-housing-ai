@@ -42,7 +42,9 @@ def parse_with_llm(raw_listing: dict) -> MaltaPropertySchema:
     Jesteś analitykiem rynku nieruchomości na Malcie. Wyciągnij precyzyjne dane z poniższego ogłoszenia.
 
     REGUŁY EXTRACKCJI:
-    - price_eur: Zawsze wyciągaj pełną kwotę w euro (np. dla "€ 650,000" wpisz 650000). Jeśli jest podana opcjonalna cena garażu, ignoruj ją i weź główną cenę nieruchomości.
+    - price_eur: Zawsze wyciągaj pełną kwotę w euro jako CAŁKOWITĄ liczbę bez groszy
+      (np. dla "€ 650,000" wpisz 650000). NIE wpisuj ceny za m² ani ułamków.
+      Jeśli jest podana opcjonalna cena garażu, ignoruj ją i weź główną cenę nieruchomości.
     - locality: Tylko miejscowość na Malcie (wyspa główna). Jeśli oferta jest na Gozo, i tak wpisz nazwę miejscowości (np. "Xewkija (Gozo)") — filtr Gozo działa osobno.
     - seller_type: Jeśli widzisz "OWNER" wpisz "OWNER". Jeśli "AGENT" lub nazwy agencji (np. ReMax) wpisz "AGENT". Jeśli "BROKER (SENSAR)" wpisz "SENSAR".
     - Wartości boolean (is_freehold, has_airspace, has_sea_view, is_shell_form) MUSZĄ być ustawione na true lub false (NIGDY null).
