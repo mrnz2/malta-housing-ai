@@ -43,6 +43,24 @@ END
 # New listings first (UTC today), then by score within each group.
 _NEW_FIRST_SQL = f"CASE WHEN ({_FIRST_SEEN_DAY_SQL}) = date('now') THEN 0 ELSE 1 END"
 
+_FIRST_SEEN_DAY_LIST_SQL = """
+CASE
+  WHEN listings.scraped_at IS NOT NULL AND listings.created_at IS NOT NULL THEN
+    CASE
+      WHEN substr(listings.scraped_at, 1, 10) < substr(listings.created_at, 1, 10)
+      THEN substr(listings.scraped_at, 1, 10)
+      ELSE substr(listings.created_at, 1, 10)
+    END
+  WHEN listings.scraped_at IS NOT NULL THEN substr(listings.scraped_at, 1, 10)
+  WHEN listings.created_at IS NOT NULL THEN substr(listings.created_at, 1, 10)
+  ELSE NULL
+END
+""".strip()
+
+_NEW_FIRST_LIST_SQL = (
+    f"CASE WHEN ({_FIRST_SEEN_DAY_LIST_SQL}) = date('now') THEN 0 ELSE 1 END"
+)
+
 _ORDER_SQL = {
     "created_desc": "CASE WHEN created_at IS NULL THEN 1 ELSE 0 END, created_at DESC, id DESC",
     "created_asc": "CASE WHEN created_at IS NULL THEN 1 ELSE 0 END, created_at ASC, id ASC",
@@ -61,6 +79,54 @@ _ORDER_SQL = {
     "ai_score_asc": (
         f"{_NEW_FIRST_SQL}, CASE WHEN ai_score IS NULL THEN 1 ELSE 0 END, "
         "ai_score ASC, id DESC"
+    ),
+}
+
+_LIST_ORDER_SQL = {
+    "created_desc": (
+        "CASE WHEN listings.created_at IS NULL THEN 1 ELSE 0 END, "
+        "listings.created_at DESC, listings.id DESC"
+    ),
+    "created_asc": (
+        "CASE WHEN listings.created_at IS NULL THEN 1 ELSE 0 END, "
+        "listings.created_at ASC, listings.id ASC"
+    ),
+    "updated_desc": (
+        "CASE WHEN listings.updated_at IS NULL THEN 1 ELSE 0 END, "
+        "listings.updated_at DESC, listings.id DESC"
+    ),
+    "updated_asc": (
+        "CASE WHEN listings.updated_at IS NULL THEN 1 ELSE 0 END, "
+        "listings.updated_at ASC, listings.id ASC"
+    ),
+    "price_asc": (
+        "CASE WHEN listings.price_eur IS NULL THEN 1 ELSE 0 END, "
+        "listings.price_eur ASC, listings.id DESC"
+    ),
+    "price_desc": (
+        "CASE WHEN listings.price_eur IS NULL THEN 1 ELSE 0 END, "
+        "listings.price_eur DESC, listings.id DESC"
+    ),
+    "locality_asc": (
+        "CASE WHEN listings.locality IS NULL THEN 1 ELSE 0 END, "
+        "listings.locality COLLATE NOCASE ASC, listings.id DESC"
+    ),
+    "title_asc": "listings.title COLLATE NOCASE ASC, listings.id DESC",
+    "gzira_asc": (
+        "CASE WHEN listings.distance_to_gzira_km IS NULL THEN 1 ELSE 0 END, "
+        "listings.distance_to_gzira_km ASC, listings.id DESC"
+    ),
+    "gzira_desc": (
+        "CASE WHEN listings.distance_to_gzira_km IS NULL THEN 1 ELSE 0 END, "
+        "listings.distance_to_gzira_km DESC, listings.id DESC"
+    ),
+    "ai_score_desc": (
+        f"{_NEW_FIRST_LIST_SQL}, CASE WHEN listings.ai_score IS NULL THEN 1 ELSE 0 END, "
+        "listings.ai_score DESC, listings.id DESC"
+    ),
+    "ai_score_asc": (
+        f"{_NEW_FIRST_LIST_SQL}, CASE WHEN listings.ai_score IS NULL THEN 1 ELSE 0 END, "
+        "listings.ai_score ASC, listings.id DESC"
     ),
 }
 
@@ -316,7 +382,7 @@ def list_listings(
         where.append("is_fav = 1")
 
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-    order_sql = _ORDER_SQL.get(sort, _ORDER_SQL["created_desc"])
+    order_sql = _LIST_ORDER_SQL.get(sort, _LIST_ORDER_SQL["created_desc"])
     limit = max(1, min(limit, 500))
     offset = max(0, offset)
 
