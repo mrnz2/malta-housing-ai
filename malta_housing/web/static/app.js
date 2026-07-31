@@ -472,6 +472,8 @@ function positionHoverTooltip(tooltipEl, anchor) {
   tooltipEl.style.top = `${top}px`;
 }
 
+let suppressModalHoverTooltips = false;
+
 function createHoverTooltip(id, extraClass = "", getContainer = () => document.body) {
   let el = null;
   let anchor = null;
@@ -511,9 +513,14 @@ function createHoverTooltip(id, extraClass = "", getContainer = () => document.b
     wire(anchorEl, getHtml) {
       const show = () => this.show(getHtml(), anchorEl);
       const hide = () => this.hide(anchorEl);
-      anchorEl.onmouseenter = show;
+      anchorEl.onmouseenter = () => {
+        if (suppressModalHoverTooltips) return;
+        show();
+      };
       anchorEl.onmouseleave = hide;
-      anchorEl.onfocus = show;
+      anchorEl.onfocus = () => {
+        if (anchorEl.matches(":focus-visible")) show();
+      };
       anchorEl.onblur = hide;
     },
     reposition() {
@@ -1032,6 +1039,11 @@ async function openDetail(id, { push = true } = {}) {
   };
 
   els.dialog.showModal();
+  hideHoverTooltips();
+  suppressModalHoverTooltips = true;
+  requestAnimationFrame(() => {
+    suppressModalHoverTooltips = false;
+  });
   syncUrl({ push });
 }
 
