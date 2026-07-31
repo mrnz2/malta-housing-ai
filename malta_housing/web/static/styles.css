@@ -341,8 +341,8 @@ body {
 }
 
 .detail-head-actions .fav-btn {
-  font-size: 1.45rem;
-  padding: 0.25rem 0.45rem;
+  font-size: 1.2rem;
+  padding: 0.15rem 0.35rem;
 }
 
 .hide-check {
@@ -355,31 +355,32 @@ body {
 }
 
 .detail-hide {
-  margin: 0 0 1rem;
+  margin: 0 0 0.65rem;
+  font-size: 0.88rem;
 }
 
 .detail-ready-field {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  margin: 0 0 1rem;
-  max-width: 12rem;
+  gap: 0.3rem;
+  margin: 0 0 0.65rem;
+  max-width: 10rem;
 }
 
 .detail-ready-field span {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-soft);
 }
 
 .detail-ready-field select {
-  font: 600 0.95rem var(--font-body);
+  font: 600 0.85rem var(--font-body);
   color: var(--ink);
   background: rgba(255, 255, 255, 0.55);
   border: 1px solid var(--line);
-  border-radius: 0.65rem;
-  padding: 0.55rem 0.75rem;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.6rem;
 }
 
 .detail-ready-field select:focus {
@@ -390,26 +391,26 @@ body {
 .detail-notes-field {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  margin: 0 0 0.65rem;
+  gap: 0.3rem;
+  margin: 0 0 0.5rem;
 }
 
 .detail-notes-field span {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-soft);
 }
 
 .detail-notes-field textarea {
-  font: 500 0.95rem/1.4 var(--font-body);
+  font: 500 0.85rem/1.35 var(--font-body);
   color: var(--ink);
   background: rgba(255, 255, 255, 0.55);
   border: 1px solid var(--line);
-  border-radius: 0.65rem;
-  padding: 0.7rem 0.8rem;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.65rem;
   resize: vertical;
-  min-height: 4.5rem;
+  min-height: 3.25rem;
 }
 
 .detail-notes-field textarea:focus {
@@ -419,12 +420,12 @@ body {
 
 .detail-notes-save {
   align-self: flex-start;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .detail-notes-status {
-  margin: -0.35rem 0 0.85rem;
-  font-size: 0.85rem;
+  margin: -0.25rem 0 0.6rem;
+  font-size: 0.8rem;
   color: var(--ink-soft);
 }
 
@@ -538,16 +539,21 @@ body {
 
 .detail-dialog {
   border: none;
-  border-radius: 18px;
+  border-radius: 14px;
   padding: 0;
-  width: min(820px, calc(100vw - 2rem));
+  width: min(720px, calc(100vw - 2rem));
   max-height: calc(100dvh - 2rem);
   background: #fffcf6;
-  box-shadow: 0 30px 80px rgba(21, 32, 40, 0.28);
+  box-shadow: 0 24px 60px rgba(21, 32, 40, 0.24);
   color: var(--ink);
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.detail-dialog .btn {
+  padding: 0.5rem 0.85rem;
+  font-size: 0.82rem;
 }
 
 .detail-dialog > .hover-tooltip {
@@ -650,24 +656,26 @@ body {
 }
 
 .detail-inner {
-  padding: 1.35rem 1.4rem 1.5rem;
+  padding: 0.95rem 1.05rem 1.1rem;
   overflow-y: auto;
   overscroll-behavior: contain;
   min-height: 0;
   flex: 1 1 auto;
   -webkit-overflow-scrolling: touch;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 .detail-head {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.75rem;
   align-items: flex-start;
 }
 
 .detail-kicker {
-  margin: 0 0 0.25rem;
-  font-size: 0.78rem;
+  margin: 0 0 0.15rem;
+  font-size: 0.68rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--sea);
@@ -678,15 +686,15 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.45rem 0.5rem;
+  gap: 0.35rem 0.4rem;
 }
 
 .detail-head h2 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 1.55rem;
+  font-size: 1.2rem;
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .detail-title-value,
@@ -721,8 +729,8 @@ body {
 }
 
 .detail-price {
-  margin: 0.9rem 0 1rem;
-  font-size: 1.7rem;
+  margin: 0.45rem 0 0.65rem;
+  font-size: 1.3rem;
   font-weight: 700;
   color: var(--sea-deep);
   font-variant-numeric: tabular-nums;
@@ -782,8 +790,8 @@ body {
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.75rem 1rem;
-  margin: 0 0 1rem;
+  gap: 0.45rem 0.75rem;
+  margin: 0 0 0.65rem;
 }
 
 @media (max-width: 640px) {
@@ -793,7 +801,7 @@ body {
 }
 
 .detail-grid dt {
-  font-size: 0.72rem;
+  font-size: 0.64rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--ink-soft);
@@ -801,28 +809,30 @@ body {
 }
 
 .detail-grid dd {
-  margin: 0.15rem 0 0;
+  margin: 0.1rem 0 0;
+  font-size: 0.88rem;
   font-weight: 600;
 }
 
 .detail-features {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.25rem;
   margin: 0;
 }
 
 .feature {
-  font-size: 0.82rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  padding: 0.35rem 0.65rem;
-  border-radius: 8px;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
   background: rgba(10, 107, 120, 0.08);
   color: var(--sea-deep);
 }
 
 .detail-link {
-  margin: 1rem 0 0;
+  margin: 0.5rem 0 0;
+  font-size: 0.88rem;
 }
 
 .detail-link a {
@@ -1036,35 +1046,35 @@ body {
 }
 
 .detail-evaluation {
-  margin: 1rem 0 1.25rem;
-  padding: 1rem 1.1rem;
-  border-radius: 12px;
+  margin: 0.55rem 0 0.75rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(15, 61, 74, 0.08);
 }
 
 .detail-evaluation h3 {
-  margin: 0 0 0.35rem;
-  font-size: 0.95rem;
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
 }
 
 .detail-score {
-  margin: 0 0 0.5rem;
-  font-size: 1.35rem;
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
   font-weight: 800;
   color: var(--sea-deep);
 }
 
 .detail-bank-valuation {
-  margin: 0 0 0.75rem;
+  margin: 0 0 0.5rem;
 }
 
 .bank-val-grid {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.25rem 0.75rem;
+  gap: 0.15rem 0.6rem;
   margin: 0;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
 }
 
 .bank-val-grid dt {
@@ -1090,32 +1100,34 @@ body {
 }
 
 .detail-warnings {
-  margin: 0 0 0.75rem;
-  padding-left: 1.1rem;
+  margin: 0 0 0.45rem;
+  padding-left: 1rem;
   color: #9a5b00;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
 }
 
 .detail-summary {
-  margin: 0 0 0.75rem;
+  margin: 0 0 0.45rem;
   color: var(--ink-soft);
-  line-height: 1.45;
+  font-size: 0.85rem;
+  line-height: 1.4;
 }
 
 .detail-pros,
 .detail-cons {
-  margin: 0.35rem 0 0;
-  padding-left: 1.1rem;
+  margin: 0.2rem 0 0;
+  padding-left: 1rem;
   color: var(--ink);
+  font-size: 0.85rem;
 }
 
 .detail-pros .eval-label,
 .detail-cons .eval-label {
   list-style: none;
-  margin-left: -1.1rem;
+  margin-left: -1rem;
   padding-left: 0;
   font-weight: 700;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
