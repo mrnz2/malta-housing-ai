@@ -555,6 +555,36 @@ body {
   font-size: 0.85rem;
 }
 
+.edit-en-ref {
+  margin-top: 0.35rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--sea) 35%, transparent);
+}
+
+.edit-en-ref[hidden] {
+  display: none !important;
+}
+
+.edit-en-ref-label {
+  display: block;
+  margin: 0 0 0.2rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.edit-en-ref-text {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+}
+
 .detail-head-actions .detail-edit-only[hidden] {
   display: none;
 }

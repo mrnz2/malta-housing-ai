@@ -963,6 +963,50 @@ function pickLocaleValue(listing, base) {
   return null;
 }
 
+function pickEnglishValue(listing, base) {
+  if (!listing) return null;
+  const enVal = listing[`${base}_en`];
+  if (enVal != null && enVal !== "" && !(Array.isArray(enVal) && !enVal.length)) {
+    return enVal;
+  }
+  const legacy = listing[base];
+  if (legacy != null && legacy !== "" && !(Array.isArray(legacy) && !legacy.length)) {
+    return legacy;
+  }
+  return null;
+}
+
+const EDIT_EN_REF_FIELDS = [
+  { base: "title", refId: "edit-title-en-ref", isList: false },
+  { base: "key_features", refId: "edit-key-features-en-ref", isList: true },
+  { base: "ai_summary", refId: "edit-ai-summary-en-ref", isList: false },
+  { base: "pros", refId: "edit-pros-en-ref", isList: true },
+  { base: "cons", refId: "edit-cons-en-ref", isList: true },
+  { base: "buyer_warnings", refId: "edit-warnings-en-ref", isList: true },
+];
+
+function formatEnRefDisplay(value, isList) {
+  if (isList) {
+    const items = Array.isArray(value) ? value : [];
+    const lines = items.map((item) => String(item).trim()).filter(Boolean);
+    return lines.length ? lines.map((line) => `• ${line}`).join("\n") : "—";
+  }
+  const text = value != null ? String(value).trim() : "";
+  return text || "—";
+}
+
+function syncEditEnRefs(listing) {
+  const show = getLocale() === "pl";
+  for (const field of EDIT_EN_REF_FIELDS) {
+    const ref = document.getElementById(field.refId);
+    const textEl = document.getElementById(`${field.refId}-text`);
+    if (!ref || !textEl) continue;
+    ref.hidden = !show;
+    if (!show) continue;
+    textEl.textContent = formatEnRefDisplay(pickEnglishValue(listing, field.base), field.isList);
+  }
+}
+
 function listToTextarea(value) {
   const items = Array.isArray(value) ? value : [];
   return items.map((item) => String(item).trim()).filter(Boolean).join("\n");
@@ -1018,6 +1062,7 @@ function populateEditForm(listing) {
   els.editShell.checked = Boolean(listing.is_shell_form);
   els.editHidden.checked = Boolean(listing.is_hidden);
   els.editReady.value = readySelectValue(listing.ready);
+  syncEditEnRefs(listing);
   setDetailEditStatus("");
 }
 

@@ -71,6 +71,7 @@
   "detail.save": "Save",
   "detail.cancel": "Cancel",
   "detail.editTitle": "Edit listing",
+  "detail.enOriginal": "English original",
   "detail.price": "Price (€)",
   "detail.propertyType": "Property type",
   "detail.url": "Listing URL",
