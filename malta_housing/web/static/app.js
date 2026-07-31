@@ -70,7 +70,7 @@ const els = {
   editShell: document.getElementById("edit-shell"),
   editHidden: document.getElementById("edit-hidden"),
   editReady: document.getElementById("edit-ready"),
-  close: document.getElementById("detail-close"),
+  detailCloseBtn: document.getElementById("detail-close"),
   detailFav: document.getElementById("detail-fav"),
   detailHidden: document.getElementById("detail-hidden"),
   detailNotes: document.getElementById("detail-notes"),
@@ -1391,7 +1391,7 @@ window.addEventListener("popstate", async () => {
   }
 });
 
-els.close.addEventListener("click", () => closeDetail());
+els.detailCloseBtn?.addEventListener("click", () => closeDetail());
 if (els.detailEditBtn) {
   els.detailEditBtn.addEventListener("click", () => enterDetailEdit());
 }

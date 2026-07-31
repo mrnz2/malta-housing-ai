@@ -663,6 +663,9 @@ body {
   box-shadow: 0 24px 60px rgba(21, 32, 40, 0.24);
   color: var(--ink);
   overflow: hidden;
+}
+
+.detail-dialog[open] {
   display: flex;
   flex-direction: column;
 }
