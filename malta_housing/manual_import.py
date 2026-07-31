@@ -12,7 +12,7 @@ import ollama
 from bs4 import BeautifulSoup
 
 from malta_housing.analysis.evaluator import evaluate_listing
-from malta_housing.budget import is_out_of_budget
+from malta_housing.budget import is_out_of_budget, is_staged_out_of_budget, remember_skipped_budget_url
 from malta_housing.common import (
     extract_title_and_text,
     infer_source_from_url,
@@ -258,6 +258,17 @@ def run_manual_pipeline(
     step("staging", "Saving to staging…")
     merge_staging([scraped])
     staged_item = scraped.model_dump()
+
+    if is_staged_out_of_budget(staged_item):
+        remember_skipped_budget_url(scraped.url)
+        return {
+            "status": "skipped",
+            "step": "skipped",
+            "message": "Skipped: out of budget (€100k–€400k)",
+            "reason": "Out of budget (€100k–€400k)",
+            "url": scraped.url,
+            "source": source,
+        }
 
     step("parsing", "Parsing with Ollama…")
     parsed_dict = parse_staged_item(staged_item, force=True, html=html)

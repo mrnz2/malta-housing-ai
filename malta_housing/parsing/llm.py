@@ -8,7 +8,13 @@ from typing import Any
 
 import ollama
 
-from malta_housing.budget import is_out_of_budget
+from malta_housing.budget import (
+    is_out_of_budget,
+    is_staged_out_of_budget,
+    load_skipped_budget_urls,
+    price_eur_from_staged,
+    remember_skipped_budget_url,
+)
 from malta_housing.common import (
     PARSE_FAILURES_PATH,
     PARSED_PATH,
@@ -109,6 +115,13 @@ def _quality_null_counts(items: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+def _skip_budget_listing(url: str, *, price_eur: int | None, pre_llm: bool) -> None:
+    remember_skipped_budget_url(url)
+    when = "przed LLM" if pre_llm else "po LLM"
+    price_txt = f"€{price_eur:,}" if price_eur is not None else "nieznana"
+    print(f"   └─ Pominięto (poza budżetem, {price_txt}, {when}).")
+
+
 def parse_staged_item(
     item: dict[str, Any],
     *,
@@ -130,6 +143,11 @@ def parse_staged_item(
             }
             if item["url"] in existing:
                 return existing[item["url"]]
+
+    if url and is_staged_out_of_budget(item):
+        pre_price = price_eur_from_staged(item)
+        remember_skipped_budget_url(url)
+        raise ValueError(f"Skipped: out of budget ({pre_price=})")
 
     parsed_data = parse_with_llm(item)
     source = resolve_source(item.get("source"), item["url"])
@@ -203,11 +221,13 @@ def run_parser(
         if changed:
             already_parsed[url] = item
     known_db_urls = set() if force else get_known_urls()
+    skipped_budget_urls = load_skipped_budget_urls()
 
     to_process: list[dict[str, Any]] = []
     skipped_known = 0
     skipped_gozo = 0
     skipped_budget = 0
+    skipped_budget_cached = 0
     skipped_hidden = 0
     for item in raw_listings:
         url = item.get("url")
@@ -216,8 +236,16 @@ def run_parser(
         if url in hidden_urls:
             skipped_hidden += 1
             continue
+        if url in skipped_budget_urls:
+            skipped_budget_cached += 1
+            continue
         if is_gozo_record(item):
             skipped_gozo += 1
+            continue
+        if is_staged_out_of_budget(item):
+            pre_price = price_eur_from_staged(item)
+            remember_skipped_budget_url(url)
+            skipped_budget += 1
             continue
         if not force and url in known_db_urls:
             skipped_known += 1
@@ -230,6 +258,8 @@ def run_parser(
         f"🚀 Parsowanie: {len(to_process)} do zrobienia "
         f"(pominięto {skipped_known} już w DB, "
         f"{skipped_gozo} Gozo, "
+        f"{skipped_budget} poza budżetem (przed LLM), "
+        f"{skipped_budget_cached} poza budżetem (cache), "
         f"{skipped_hidden} ukryte, "
         f"{len(already_parsed)} już w parsed checkpoint).\n"
     )
@@ -264,7 +294,11 @@ def run_parser(
                 continue
             if is_out_of_budget(result_dict):
                 skipped_budget += 1
-                print("   └─ Pominięto (poza budżetem).")
+                _skip_budget_listing(
+                    item["url"],
+                    price_eur=result_dict.get("price_eur"),
+                    pre_llm=False,
+                )
                 continue
             results_by_url[item["url"]] = result_dict
             success += 1
@@ -308,6 +342,7 @@ def run_parser(
     print(
         f"\n✅ Gotowe! Sukces w tej sesji: {success}, błędy: {failures}, "
         f"pominięte Gozo: {skipped_gozo}, poza budżetem: {skipped_budget}, "
+        f"poza budżetem (cache): {skipped_budget_cached}, "
         f"ukryte: {skipped_hidden}. "
         f"Łącznie w {PARSED_PATH}: {len(all_results)}. "
         f"Nulls — price: {nulls['missing_price_eur']}, locality: {nulls['missing_locality']}."

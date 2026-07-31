@@ -11,6 +11,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 STAGING_PATH = DATA_DIR / "scraped_listings.json"
 PARSED_PATH = DATA_DIR / "parsed_listings.json"
 PARSE_FAILURES_PATH = DATA_DIR / "parse_failures.jsonl"
+SKIPPED_BUDGET_PATH = DATA_DIR / "skipped_budget_urls.json"
 DB_PATH = DATA_DIR / "malta_properties.db"
 
 

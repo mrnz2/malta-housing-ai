@@ -120,6 +120,19 @@ function offsetFromPage(page) {
   return (n - 1) * PAGE_SIZE;
 }
 
+function readItemFromUrl() {
+  const item = new URLSearchParams(window.location.search).get("item");
+  if (!item) return null;
+  const id = Number.parseInt(item, 10);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function getOpenItemId() {
+  if (!els.dialog.open) return null;
+  const id = Number(els.dialog.dataset.listingId);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
 function readUrlState() {
   const params = new URLSearchParams(window.location.search);
   const filters = { sort: DEFAULT_SORT };
@@ -160,6 +173,10 @@ function syncUrl({ push = false } = {}) {
   const page = pageFromOffset(state.offset);
   if (page > 1) {
     params.set("page", String(page));
+  }
+  const itemId = getOpenItemId();
+  if (itemId) {
+    params.set("item", String(itemId));
   }
   const qs = params.toString();
   const target = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
@@ -716,13 +733,25 @@ function commitListings({ push = false } = {}) {
   return loadListings({ syncUrl: true, push });
 }
 
-async function openDetail(id) {
+function closeDetail({ push = true } = {}) {
+  delete els.dialog.dataset.listingId;
+  els.dialog.close();
+  syncUrl({ push });
+}
+
+async function openDetail(id, { push = true } = {}) {
   hideScoreTooltip();
   const [listingRes, historyRes] = await Promise.all([
     fetch(`/api/listings/${id}?lang=${encodeURIComponent(getLocale())}`),
     fetch(`/api/listings/${id}/history`),
   ]);
-  if (!listingRes.ok) return;
+  if (!listingRes.ok) {
+    if (readItemFromUrl() === id) {
+      delete els.dialog.dataset.listingId;
+      syncUrl({ push: false });
+    }
+    return;
+  }
   const listing = await listingRes.json();
   const historyPayload = await historyRes.json();
   const history = historyPayload.items || [];
@@ -843,7 +872,7 @@ async function openDetail(id) {
       (els.detailHidden.checked && !state.filters.show_hidden) ||
       (!els.detailHidden.checked && state.filters.show_hidden)
     ) {
-      els.dialog.close();
+      closeDetail();
     }
   };
 
@@ -855,6 +884,7 @@ async function openDetail(id) {
   };
 
   els.dialog.showModal();
+  syncUrl({ push });
 }
 
 function importStepLabel(step) {
@@ -993,17 +1023,33 @@ els.next.addEventListener("click", () => {
   commitListings({ push: true });
 });
 
-window.addEventListener("popstate", () => {
+window.addEventListener("popstate", async () => {
   const urlState = readUrlState();
   state.filters = urlState.filters;
   state.offset = urlState.offset;
   applyStateToForm(urlState.filters);
-  loadListings();
+  await loadListings();
+
+  const itemId = readItemFromUrl();
+  const openId = getOpenItemId();
+  if (itemId) {
+    if (itemId !== openId) {
+      await openDetail(itemId, { push: false });
+    }
+  } else if (els.dialog.open) {
+    delete els.dialog.dataset.listingId;
+    els.dialog.close();
+  }
 });
 
-els.close.addEventListener("click", () => els.dialog.close());
+els.close.addEventListener("click", () => closeDetail());
 els.dialog.addEventListener("click", (e) => {
-  if (e.target === els.dialog) els.dialog.close();
+  if (e.target === els.dialog) closeDetail();
+});
+els.dialog.addEventListener("close", () => {
+  if (!els.dialog.dataset.listingId) return;
+  delete els.dialog.dataset.listingId;
+  if (readItemFromUrl()) syncUrl({ push: true });
 });
 
 if (els.importOpen) {
@@ -1042,3 +1088,8 @@ await loadStats();
 applyStateToForm(initialUrlState.filters);
 syncUrl();
 await loadListings();
+
+const initialItemId = readItemFromUrl();
+if (initialItemId) {
+  await openDetail(initialItemId, { push: false });
+}
