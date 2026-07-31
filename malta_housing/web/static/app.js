@@ -162,7 +162,7 @@ function applyStateToForm(filters) {
   }
 }
 
-function syncUrl({ push = false } = {}) {
+function syncUrl({ push = false, clearItem = false } = {}) {
   const params = new URLSearchParams();
   for (const key of FILTER_KEYS) {
     const value = state.filters[key];
@@ -174,7 +174,7 @@ function syncUrl({ push = false } = {}) {
   if (page > 1) {
     params.set("page", String(page));
   }
-  const itemId = getOpenItemId();
+  const itemId = clearItem ? null : getOpenItemId() ?? readItemFromUrl();
   if (itemId) {
     params.set("item", String(itemId));
   }
@@ -736,7 +736,7 @@ function commitListings({ push = false } = {}) {
 function closeDetail({ push = true } = {}) {
   delete els.dialog.dataset.listingId;
   els.dialog.close();
-  syncUrl({ push });
+  syncUrl({ push, clearItem: true });
 }
 
 async function openDetail(id, { push = true } = {}) {
@@ -748,7 +748,7 @@ async function openDetail(id, { push = true } = {}) {
   if (!listingRes.ok) {
     if (readItemFromUrl() === id) {
       delete els.dialog.dataset.listingId;
-      syncUrl({ push: false });
+      syncUrl({ push: false, clearItem: true });
     }
     return;
   }
@@ -1049,7 +1049,7 @@ els.dialog.addEventListener("click", (e) => {
 els.dialog.addEventListener("close", () => {
   if (!els.dialog.dataset.listingId) return;
   delete els.dialog.dataset.listingId;
-  if (readItemFromUrl()) syncUrl({ push: true });
+  if (readItemFromUrl()) syncUrl({ push: true, clearItem: true });
 });
 
 if (els.importOpen) {
@@ -1073,6 +1073,7 @@ if (els.importDialog) {
 }
 
 const initialUrlState = readUrlState();
+const initialItemId = readItemFromUrl();
 state.filters = initialUrlState.filters;
 state.offset = initialUrlState.offset;
 
@@ -1089,7 +1090,6 @@ applyStateToForm(initialUrlState.filters);
 syncUrl();
 await loadListings();
 
-const initialItemId = readItemFromUrl();
 if (initialItemId) {
   await openDetail(initialItemId, { push: false });
 }
