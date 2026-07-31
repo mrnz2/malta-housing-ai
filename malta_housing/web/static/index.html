@@ -172,17 +172,19 @@
         <ul class="detail-pros" id="detail-pros"></ul>
         <ul class="detail-cons" id="detail-cons"></ul>
       </section>
-      <label class="check detail-hide">
-        <input type="checkbox" id="detail-hidden" /> <span data-i18n="detail.hide">Hide</span>
-      </label>
-      <label class="field detail-ready-field">
-        <span data-i18n="detail.ready">Ready to move in</span>
-        <select id="detail-ready">
-          <option value="unknown" data-i18n="unknown">?</option>
-          <option value="true" data-i18n="yes">Yes</option>
-          <option value="false" data-i18n="no">No</option>
-        </select>
-      </label>
+      <div class="detail-actions-row">
+        <label class="check detail-hide">
+          <input type="checkbox" id="detail-hidden" /> <span data-i18n="detail.hide">Hide</span>
+        </label>
+        <label class="field detail-ready-field">
+          <span data-i18n="detail.ready">Ready to move in</span>
+          <select id="detail-ready">
+            <option value="unknown" data-i18n="unknown">?</option>
+            <option value="true" data-i18n="yes">Yes</option>
+            <option value="false" data-i18n="no">No</option>
+          </select>
+        </label>
+      </div>
       <label class="field detail-notes-field">
         <span data-i18n="detail.notes">Notes</span>
         <textarea id="detail-notes" rows="2" data-i18n-placeholder="detail.notesPlaceholder" placeholder="Add a note…"></textarea>

@@ -354,17 +354,27 @@ body {
   color: var(--ink-soft);
 }
 
-.detail-hide {
+.detail-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
   margin: 0 0 0.65rem;
+}
+
+.detail-hide {
+  margin: 0;
   font-size: 0.88rem;
+  flex-shrink: 0;
 }
 
 .detail-ready-field {
   display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  margin: 0 0 0.65rem;
-  max-width: 10rem;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  max-width: none;
 }
 
 .detail-ready-field span {
@@ -372,6 +382,7 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-soft);
+  white-space: nowrap;
 }
 
 .detail-ready-field select {
