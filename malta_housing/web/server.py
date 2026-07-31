@@ -230,6 +230,13 @@ class BrowseHandler(BaseHTTPRequestHandler):
         self._send(*_json_bytes({"error": "Not found"}, 404))
 
     def do_POST(self) -> None:  # noqa: N802
+        try:
+            self._do_post()
+        except Exception as exc:
+            print(f"[web] POST {self.path} failed: {exc}", flush=True)
+            self._send(*_json_bytes({"error": "Internal server error"}, 500))
+
+    def _do_post(self) -> None:
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
 
