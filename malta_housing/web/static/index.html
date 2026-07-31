@@ -156,9 +156,13 @@
         </div>
         <div class="detail-head-actions">
           <button type="button" class="fav-btn" id="detail-fav" data-i18n-aria="detail.favorite" aria-label="Favorite" aria-pressed="false">♡</button>
+          <button type="button" class="btn ghost" id="detail-edit-open" data-i18n="detail.edit">Edit</button>
+          <button type="button" class="btn ghost detail-edit-only" id="detail-edit-cancel" data-i18n="detail.cancel" hidden>Cancel</button>
+          <button type="button" class="btn primary detail-edit-only" id="detail-edit-save" data-i18n="detail.save" hidden>Save</button>
           <button type="button" class="btn ghost" id="detail-close" data-i18n-aria="detail.close" aria-label="Close" data-i18n="detail.close">Close</button>
         </div>
       </header>
+      <div id="detail-view">
       <p class="detail-price" id="detail-price-wrap">
         <span id="detail-price" class="detail-price-value" tabindex="0"></span>
       </p>
@@ -193,6 +197,87 @@
       <p class="detail-notes-status" id="detail-notes-status" hidden></p>
       <dl class="detail-grid" id="detail-grid"></dl>
       <p class="detail-link"><a id="detail-url" href="#" target="_blank" rel="noopener" data-i18n="detail.openListing">Open original listing ↗</a></p>
+      </div>
+
+      <form id="detail-edit-form" class="detail-edit" hidden>
+        <p class="detail-edit-kicker" data-i18n="detail.editTitle">Edit listing</p>
+        <label class="field">
+          <span data-i18n="table.title">Title</span>
+          <input type="text" id="edit-title" autocomplete="off" />
+        </label>
+        <div class="detail-edit-row">
+          <label class="field">
+            <span data-i18n="detail.price">Price (€)</span>
+            <input type="number" id="edit-price" min="0" step="1000" />
+          </label>
+          <label class="field">
+            <span data-i18n="detail.bedrooms">Bedrooms</span>
+            <input type="number" id="edit-bedrooms" min="0" step="1" />
+          </label>
+        </div>
+        <div class="detail-edit-row">
+          <label class="field">
+            <span data-i18n="table.locality">Locality</span>
+            <input type="text" id="edit-locality" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span data-i18n="detail.propertyType">Property type</span>
+            <input type="text" id="edit-property-type" autocomplete="off" />
+          </label>
+        </div>
+        <label class="field">
+          <span data-i18n="detail.seller">Seller</span>
+          <input type="text" id="edit-seller-type" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span data-i18n="detail.url">Listing URL</span>
+          <input type="url" id="edit-url" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span data-i18n="detail.keyFeatures">Key features</span>
+          <span class="field-hint" data-i18n="detail.listOnePerLine">One item per line</span>
+          <textarea id="edit-key-features" rows="3"></textarea>
+        </label>
+        <label class="field">
+          <span data-i18n="detail.aiSummary">AI summary</span>
+          <textarea id="edit-ai-summary" rows="3"></textarea>
+        </label>
+        <label class="field">
+          <span data-i18n="detail.pros">Pros</span>
+          <span class="field-hint" data-i18n="detail.listOnePerLine">One item per line</span>
+          <textarea id="edit-pros" rows="3"></textarea>
+        </label>
+        <label class="field">
+          <span data-i18n="detail.cons">Cons</span>
+          <span class="field-hint" data-i18n="detail.listOnePerLine">One item per line</span>
+          <textarea id="edit-cons" rows="3"></textarea>
+        </label>
+        <label class="field">
+          <span data-i18n="detail.buyerWarnings">Buyer warnings</span>
+          <span class="field-hint" data-i18n="detail.listOnePerLine">One item per line</span>
+          <textarea id="edit-warnings" rows="3"></textarea>
+        </label>
+        <label class="field">
+          <span data-i18n="detail.notes">Notes</span>
+          <textarea id="edit-notes" rows="2" data-i18n-placeholder="detail.notesPlaceholder" placeholder="Add a note…"></textarea>
+        </label>
+        <div class="detail-edit-checks">
+          <label class="check"><input type="checkbox" id="edit-freehold" /> <span data-i18n="detail.freehold">Freehold</span></label>
+          <label class="check"><input type="checkbox" id="edit-airspace" /> <span data-i18n="detail.airspace">Airspace</span></label>
+          <label class="check"><input type="checkbox" id="edit-sea-view" /> <span data-i18n="detail.seaView">Sea view</span></label>
+          <label class="check"><input type="checkbox" id="edit-shell" /> <span data-i18n="detail.shellForm">Shell form</span></label>
+          <label class="check"><input type="checkbox" id="edit-hidden" /> <span data-i18n="detail.hide">Hide</span></label>
+        </div>
+        <label class="field detail-ready-field">
+          <span data-i18n="detail.ready">Ready to move in</span>
+          <select id="edit-ready">
+            <option value="unknown" data-i18n="unknown">?</option>
+            <option value="true" data-i18n="yes">Yes</option>
+            <option value="false" data-i18n="no">No</option>
+          </select>
+        </label>
+        <p class="detail-edit-status" id="detail-edit-status" hidden></p>
+      </form>
     </div>
   </dialog>
 

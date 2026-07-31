@@ -11,6 +11,7 @@ from malta_housing.budget import MAX_PRICE_EUR, MIN_PRICE_EUR, is_out_of_budget
 from malta_housing.common import PARSED_PATH, load_json_list, purge_hidden_from_json, resolve_source
 from malta_housing.distances import distance_to_gzira_km, sea_proximity_for
 from malta_housing.geo import is_gozo_record
+from malta_housing.i18n.localize import normalize_locale
 from malta_housing.i18n.property_types import normalize_property_type
 from malta_housing.models import utc_now_iso
 from malta_housing.paths import DB_PATH, ensure_data_dir
@@ -563,6 +564,159 @@ def set_listing_ready(
     conn.commit()
     conn.close()
     return updated
+
+
+def _clean_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _clean_str_list(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        items = [line.strip() for line in value.splitlines() if line.strip()]
+    elif isinstance(value, list):
+        items = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        return None
+    return items
+
+
+def update_listing_editable(
+    listing_id: int,
+    *,
+    locale: str,
+    fields: dict[str, Any],
+    db_name: str | Path = DB_PATH,
+) -> bool:
+    """Apply manual UI edits to a listing (locale-specific text + shared scalars)."""
+    init_db(db_name)
+    loc = normalize_locale(locale)
+    conn = _connect(db_name)
+    cur = conn.cursor()
+    cur.execute("SELECT url, locality FROM listings WHERE id = ?", (listing_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return False
+
+    url = row["url"]
+    listing_sets: list[str] = []
+    listing_params: list[Any] = []
+    now = utc_now_iso()
+
+    def add_listing(column: str, value: Any) -> None:
+        listing_sets.append(f"{column} = ?")
+        listing_params.append(value)
+
+    if "title" in fields:
+        title = _clean_text(fields["title"])
+        add_listing(f"title_{loc}", title)
+        if loc == "en":
+            add_listing("title", title)
+
+    if "key_features" in fields:
+        features = _clean_str_list(fields["key_features"])
+        features_json = _json_list_text(features) if features is not None else None
+        add_listing(f"key_features_{loc}", features_json)
+        if loc == "en":
+            add_listing("key_features", features_json)
+
+    if "ai_summary" in fields:
+        summary = _clean_text(fields["ai_summary"])
+        add_listing(f"ai_summary_{loc}", summary)
+        if loc == "en":
+            add_listing("ai_summary", summary)
+
+    if "price_eur" in fields:
+        price = fields["price_eur"]
+        if price is None or price == "":
+            add_listing("price_eur", None)
+        else:
+            add_listing("price_eur", int(price))
+
+    if "locality" in fields:
+        locality = _clean_text(fields["locality"])
+        add_listing("locality", locality)
+        if locality:
+            km = distance_to_gzira_km(locality)
+            sea = sea_proximity_for(locality)
+            add_listing("distance_to_gzira_km", km)
+            add_listing("sea_proximity", sea)
+
+    if "property_type" in fields:
+        raw_type = _clean_text(fields["property_type"])
+        add_listing(
+            "property_type",
+            normalize_property_type(raw_type) or raw_type,
+        )
+
+    if "bedrooms" in fields:
+        bedrooms = fields["bedrooms"]
+        if bedrooms is None or bedrooms == "":
+            add_listing("bedrooms", None)
+        else:
+            add_listing("bedrooms", int(bedrooms))
+
+    if "seller_type" in fields:
+        add_listing("seller_type", _clean_text(fields["seller_type"]))
+
+    if "url" in fields:
+        add_listing("url", _clean_text(fields["url"]))
+
+    if "notes" in fields:
+        add_listing("notes", _clean_text(fields["notes"]))
+
+    if "ready" in fields:
+        add_listing("ready", fields["ready"])
+
+    for flag in ("is_freehold", "has_airspace", "has_sea_view", "is_shell_form", "is_hidden"):
+        if flag in fields:
+            add_listing(flag, 1 if bool(fields[flag]) else 0)
+
+    if listing_sets:
+        listing_sets.append("updated_at = ?")
+        listing_params.append(now)
+        listing_params.append(listing_id)
+        cur.execute(
+            f"UPDATE listings SET {', '.join(listing_sets)} WHERE id = ?",
+            listing_params,
+        )
+
+    eval_sets: list[str] = []
+    eval_params: list[Any] = []
+
+    def add_eval(column: str, value: Any) -> None:
+        eval_sets.append(f"{column} = ?")
+        eval_params.append(value)
+
+    if "ai_summary" in fields:
+        add_eval(f"ai_summary_{loc}", _clean_text(fields["ai_summary"]))
+        if loc == "en":
+            add_eval("ai_summary", _clean_text(fields["ai_summary"]))
+
+    for list_field in ("pros", "cons", "buyer_warnings"):
+        if list_field not in fields:
+            continue
+        items = _clean_str_list(fields[list_field])
+        json_value = _json_list_text(items) if items is not None else "[]"
+        add_eval(f"{list_field}_{loc}", json_value)
+        if loc == "en":
+            add_eval(list_field, json_value)
+
+    if eval_sets:
+        eval_params.append(url)
+        cur.execute(
+            f"UPDATE evaluations SET {', '.join(eval_sets)} WHERE url = ?",
+            eval_params,
+        )
+
+    conn.commit()
+    conn.close()
+    return True
 
 
 def save_listings_to_db(

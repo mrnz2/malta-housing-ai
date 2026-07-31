@@ -23,6 +23,9 @@ const state = {
   filters: { sort: DEFAULT_SORT },
 };
 
+let detailEditMode = false;
+let currentDetailListing = null;
+
 const els = {
   form: document.getElementById("filter-form"),
   body: document.getElementById("listings-body"),
@@ -42,6 +45,31 @@ const els = {
   seller: document.getElementById("filter-seller"),
   type: document.getElementById("filter-type"),
   dialog: document.getElementById("detail-dialog"),
+  detailView: document.getElementById("detail-view"),
+  detailEdit: document.getElementById("detail-edit-form"),
+  detailEditBtn: document.getElementById("detail-edit-open"),
+  detailEditSave: document.getElementById("detail-edit-save"),
+  detailEditCancel: document.getElementById("detail-edit-cancel"),
+  detailEditStatus: document.getElementById("detail-edit-status"),
+  editTitle: document.getElementById("edit-title"),
+  editPrice: document.getElementById("edit-price"),
+  editBedrooms: document.getElementById("edit-bedrooms"),
+  editLocality: document.getElementById("edit-locality"),
+  editPropertyType: document.getElementById("edit-property-type"),
+  editSellerType: document.getElementById("edit-seller-type"),
+  editUrl: document.getElementById("edit-url"),
+  editKeyFeatures: document.getElementById("edit-key-features"),
+  editAiSummary: document.getElementById("edit-ai-summary"),
+  editPros: document.getElementById("edit-pros"),
+  editCons: document.getElementById("edit-cons"),
+  editWarnings: document.getElementById("edit-warnings"),
+  editNotes: document.getElementById("edit-notes"),
+  editFreehold: document.getElementById("edit-freehold"),
+  editAirspace: document.getElementById("edit-airspace"),
+  editSeaView: document.getElementById("edit-sea-view"),
+  editShell: document.getElementById("edit-shell"),
+  editHidden: document.getElementById("edit-hidden"),
+  editReady: document.getElementById("edit-ready"),
   close: document.getElementById("detail-close"),
   detailFav: document.getElementById("detail-fav"),
   detailHidden: document.getElementById("detail-hidden"),
@@ -904,9 +932,166 @@ function commitListings({ push = false } = {}) {
 
 function closeDetail({ push = true } = {}) {
   hideHoverTooltips();
+  exitDetailEdit();
   delete els.dialog.dataset.listingId;
+  currentDetailListing = null;
   els.dialog.close();
   syncUrl({ push, clearItem: true });
+}
+
+function localeSuffix() {
+  return getLocale() === "pl" ? "pl" : "en";
+}
+
+function pickLocaleValue(listing, base) {
+  if (!listing) return null;
+  const loc = localeSuffix();
+  const localized = listing[`${base}_${loc}`];
+  if (localized != null && localized !== "" && !(Array.isArray(localized) && !localized.length)) {
+    return localized;
+  }
+  if (loc !== "en") {
+    const enVal = listing[`${base}_en`];
+    if (enVal != null && enVal !== "" && !(Array.isArray(enVal) && !enVal.length)) {
+      return enVal;
+    }
+  }
+  const legacy = listing[base];
+  if (legacy != null && legacy !== "" && !(Array.isArray(legacy) && !legacy.length)) {
+    return legacy;
+  }
+  return null;
+}
+
+function listToTextarea(value) {
+  const items = Array.isArray(value) ? value : [];
+  return items.map((item) => String(item).trim()).filter(Boolean).join("\n");
+}
+
+function textareaToList(value) {
+  return String(value || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function setDetailEditStatus(text, kind = "") {
+  if (!els.detailEditStatus) return;
+  if (!text) {
+    els.detailEditStatus.hidden = true;
+    els.detailEditStatus.textContent = "";
+    els.detailEditStatus.className = "detail-edit-status";
+    return;
+  }
+  els.detailEditStatus.hidden = false;
+  els.detailEditStatus.textContent = text;
+  els.detailEditStatus.className = `detail-edit-status${kind ? ` is-${kind}` : ""}`;
+}
+
+function syncDetailEditChrome() {
+  const editing = detailEditMode;
+  if (els.detailView) els.detailView.hidden = editing;
+  if (els.detailEdit) els.detailEdit.hidden = !editing;
+  if (els.detailEditBtn) els.detailEditBtn.hidden = editing;
+  if (els.detailEditSave) els.detailEditSave.hidden = !editing;
+  if (els.detailEditCancel) els.detailEditCancel.hidden = !editing;
+}
+
+function populateEditForm(listing) {
+  if (!listing) return;
+  els.editTitle.value = pickLocaleValue(listing, "title") || "";
+  els.editPrice.value = listing.price_eur ?? "";
+  els.editBedrooms.value = listing.bedrooms ?? "";
+  els.editLocality.value = listing.locality || "";
+  els.editPropertyType.value = listing.property_type || "";
+  els.editSellerType.value = listing.seller_type || "";
+  els.editUrl.value = listing.url || "";
+  els.editKeyFeatures.value = listToTextarea(pickLocaleValue(listing, "key_features"));
+  els.editAiSummary.value = pickLocaleValue(listing, "ai_summary") || "";
+  els.editPros.value = listToTextarea(pickLocaleValue(listing, "pros"));
+  els.editCons.value = listToTextarea(pickLocaleValue(listing, "cons"));
+  els.editWarnings.value = listToTextarea(pickLocaleValue(listing, "buyer_warnings"));
+  els.editNotes.value = listing.notes || "";
+  els.editFreehold.checked = Boolean(listing.is_freehold);
+  els.editAirspace.checked = Boolean(listing.has_airspace);
+  els.editSeaView.checked = Boolean(listing.has_sea_view);
+  els.editShell.checked = Boolean(listing.is_shell_form);
+  els.editHidden.checked = Boolean(listing.is_hidden);
+  els.editReady.value = readySelectValue(listing.ready);
+  setDetailEditStatus("");
+}
+
+function collectEditFields() {
+  const priceRaw = els.editPrice.value.trim();
+  const bedroomsRaw = els.editBedrooms.value.trim();
+  return {
+    title: els.editTitle.value.trim(),
+    price_eur: priceRaw === "" ? null : Number.parseInt(priceRaw, 10),
+    bedrooms: bedroomsRaw === "" ? null : Number.parseInt(bedroomsRaw, 10),
+    locality: els.editLocality.value.trim(),
+    property_type: els.editPropertyType.value.trim(),
+    seller_type: els.editSellerType.value.trim(),
+    url: els.editUrl.value.trim(),
+    key_features: textareaToList(els.editKeyFeatures.value),
+    ai_summary: els.editAiSummary.value.trim(),
+    pros: textareaToList(els.editPros.value),
+    cons: textareaToList(els.editCons.value),
+    buyer_warnings: textareaToList(els.editWarnings.value),
+    notes: els.editNotes.value,
+    is_freehold: els.editFreehold.checked,
+    has_airspace: els.editAirspace.checked,
+    has_sea_view: els.editSeaView.checked,
+    is_shell_form: els.editShell.checked,
+    is_hidden: els.editHidden.checked,
+    ready: readyFromSelect(els.editReady.value),
+  };
+}
+
+function enterDetailEdit() {
+  if (!currentDetailListing) return;
+  detailEditMode = true;
+  populateEditForm(currentDetailListing);
+  syncDetailEditChrome();
+  hideHoverTooltips();
+}
+
+function exitDetailEdit() {
+  detailEditMode = false;
+  syncDetailEditChrome();
+  setDetailEditStatus("");
+}
+
+async function saveDetailEdit() {
+  if (!currentDetailListing) return;
+  const id = currentDetailListing.id;
+  setDetailEditStatus(t("results.loading"), "running");
+  const res = await fetch(`/api/listings/${id}/edit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      locale: getLocale(),
+      fields: collectEditFields(),
+    }),
+  });
+  if (!res.ok) {
+    setDetailEditStatus(t("detail.saveError"), "error");
+    return;
+  }
+  const listing = await res.json();
+  currentDetailListing = listing;
+  exitDetailEdit();
+  await loadStats();
+  await loadListings();
+  if (
+    (listing.is_hidden && !state.filters.show_hidden) ||
+    (!listing.is_hidden && state.filters.show_hidden)
+  ) {
+    closeDetail();
+    return;
+  }
+  await openDetail(id, { push: false });
+  els.detailNotesStatus.hidden = false;
+  els.detailNotesStatus.textContent = t("detail.saved");
 }
 
 async function openDetail(id, { push = true } = {}) {
@@ -926,6 +1111,8 @@ async function openDetail(id, { push = true } = {}) {
   const listing = await listingRes.json();
   const historyPayload = await historyRes.json();
   const history = historyPayload.items || [];
+  currentDetailListing = listing;
+  exitDetailEdit();
 
   document.getElementById("detail-kicker").textContent = [
     listing.is_new ? t("badge.new") : null,
@@ -1197,12 +1384,29 @@ window.addEventListener("popstate", async () => {
       await openDetail(itemId, { push: false });
     }
   } else if (els.dialog.open) {
+    exitDetailEdit();
+    currentDetailListing = null;
     delete els.dialog.dataset.listingId;
     els.dialog.close();
   }
 });
 
 els.close.addEventListener("click", () => closeDetail());
+if (els.detailEditBtn) {
+  els.detailEditBtn.addEventListener("click", () => enterDetailEdit());
+}
+if (els.detailEditCancel) {
+  els.detailEditCancel.addEventListener("click", () => exitDetailEdit());
+}
+if (els.detailEditSave) {
+  els.detailEditSave.addEventListener("click", () => saveDetailEdit());
+}
+if (els.detailEdit) {
+  els.detailEdit.addEventListener("submit", (e) => {
+    e.preventDefault();
+    saveDetailEdit();
+  });
+}
 els.dialog.addEventListener("click", (e) => {
   if (e.target === els.dialog) closeDetail();
 });
@@ -1240,10 +1444,19 @@ state.offset = initialUrlState.offset;
 
 await initI18n();
 wireLangSwitcher();
+syncDetailEditChrome();
 window.addEventListener("localechange", async () => {
   applyTranslations();
   await loadStats();
   await loadListings();
+  if (detailEditMode && currentDetailListing) {
+    populateEditForm(currentDetailListing);
+    return;
+  }
+  const openId = getOpenItemId();
+  if (openId) {
+    await openDetail(openId, { push: false });
+  }
 });
 
 await loadStats();

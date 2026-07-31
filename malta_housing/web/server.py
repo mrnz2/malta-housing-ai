@@ -15,7 +15,14 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from malta_housing.common import configure_stdio
 from malta_housing.db import queries
-from malta_housing.db.store import init_db, set_listing_fav, set_listing_hidden, set_listing_notes, set_listing_ready
+from malta_housing.db.store import (
+    init_db,
+    set_listing_fav,
+    set_listing_hidden,
+    set_listing_notes,
+    set_listing_ready,
+    update_listing_editable,
+)
 from malta_housing.i18n.localize import normalize_locale
 from malta_housing.manual_import import run_manual_pipeline
 from malta_housing.paths import DB_PATH, PACKAGE_ROOT
@@ -348,6 +355,33 @@ class BrowseHandler(BaseHTTPRequestHandler):
                 return
             listing = queries.get_listing(listing_id)
             self._send(*_json_bytes(listing or {"id": listing_id, "notes": notes}))
+            return
+
+        match_edit = re.fullmatch(r"/api/listings/(\d+)/edit", path)
+        if match_edit:
+            listing_id = int(match_edit.group(1))
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                body = json.loads(raw.decode("utf-8") or "{}")
+            except json.JSONDecodeError:
+                self._send(*_json_bytes({"error": "Invalid JSON"}, 400))
+                return
+            locale = normalize_locale(body.get("locale"))
+            fields = body.get("fields")
+            if not isinstance(fields, dict):
+                self._send(*_json_bytes({"error": "Missing 'fields' object"}, 400))
+                return
+            if "ready" in fields:
+                ready = fields["ready"]
+                if ready is not None and not isinstance(ready, bool):
+                    self._send(*_json_bytes({"error": "'ready' must be a boolean or null"}, 400))
+                    return
+            if not update_listing_editable(listing_id, locale=locale, fields=fields):
+                self._send(*_json_bytes({"error": "Listing not found"}, 404))
+                return
+            listing = queries.get_listing(listing_id, locale=locale)
+            self._send(*_json_bytes(listing or {"id": listing_id}))
             return
 
         self._send(*_json_bytes({"error": "Not found"}, 404))
