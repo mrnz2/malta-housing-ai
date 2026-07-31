@@ -544,6 +544,11 @@ body {
   background: #fffcf6;
   box-shadow: 0 30px 80px rgba(21, 32, 40, 0.28);
   color: var(--ink);
+  overflow: visible;
+}
+
+.detail-dialog > .hover-tooltip {
+  z-index: 2;
 }
 
 .detail-dialog::backdrop {

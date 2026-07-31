@@ -472,18 +472,21 @@ function positionHoverTooltip(tooltipEl, anchor) {
   tooltipEl.style.top = `${top}px`;
 }
 
-function createHoverTooltip(id, extraClass = "") {
+function createHoverTooltip(id, extraClass = "", getContainer = () => document.body) {
   let el = null;
   let anchor = null;
 
   function getEl() {
+    const container = getContainer();
     if (!el) {
       el = document.createElement("div");
       el.id = id;
       el.className = `hover-tooltip ${extraClass}`.trim();
       el.hidden = true;
       el.setAttribute("role", "tooltip");
-      document.body.appendChild(el);
+      container.appendChild(el);
+    } else if (el.parentElement !== container) {
+      container.appendChild(el);
     }
     return el;
   }
@@ -520,8 +523,16 @@ function createHoverTooltip(id, extraClass = "") {
   };
 }
 
-const priceHistoryTooltip = createHoverTooltip("price-history-tooltip", "price-history-tooltip");
-const titleDatesTooltip = createHoverTooltip("title-dates-tooltip", "title-dates-tooltip");
+const priceHistoryTooltip = createHoverTooltip(
+  "price-history-tooltip",
+  "price-history-tooltip",
+  () => els.dialog
+);
+const titleDatesTooltip = createHoverTooltip(
+  "title-dates-tooltip",
+  "title-dates-tooltip",
+  () => els.dialog
+);
 
 function buildPriceHistoryTooltipContent(history) {
   const rows = Array.isArray(history) ? history : [];
