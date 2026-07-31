@@ -447,57 +447,13 @@ function wireScoreTooltip(wrap, item) {
   wrap.addEventListener("mousedown", (e) => e.stopPropagation());
 }
 
-window.addEventListener(
-  "scroll",
-  () => {
-    if (scoreTooltipAnchor && !scoreTooltipEl?.hidden) {
-      positionScoreTooltip(scoreTooltipAnchor);
-    }
-    if (priceHistoryTooltipAnchor && !priceHistoryTooltipEl?.hidden) {
-      positionPriceHistoryTooltip(priceHistoryTooltipAnchor);
-    }
-  },
-  true
-);
-
-function buildPriceHistoryTooltipContent(history) {
-  const rows = Array.isArray(history) ? history : [];
-  const header = `<div class="hover-tooltip-header"><strong>${escapeHtml(t("detail.priceHistory"))}</strong></div>`;
-  if (!rows.length) {
-    return `${header}<p class="hover-tooltip-fallback">${escapeHtml(t("detail.noHistory"))}</p>`;
-  }
-  const list = rows
-    .map(
-      (h) =>
-        `<div class="price-history-row"><span>${escapeHtml(formatDate(h.recorded_at))}</span><strong>${euro(h.price_eur)}</strong></div>`
-    )
-    .join("");
-  return `${header}<div class="price-history-rows">${list}</div>`;
-}
-
-let priceHistoryTooltipEl = null;
-let priceHistoryTooltipAnchor = null;
-
-function getPriceHistoryTooltipEl() {
-  if (!priceHistoryTooltipEl) {
-    priceHistoryTooltipEl = document.createElement("div");
-    priceHistoryTooltipEl.id = "price-history-tooltip";
-    priceHistoryTooltipEl.className = "hover-tooltip price-history-tooltip";
-    priceHistoryTooltipEl.hidden = true;
-    priceHistoryTooltipEl.setAttribute("role", "tooltip");
-    document.body.appendChild(priceHistoryTooltipEl);
-  }
-  return priceHistoryTooltipEl;
-}
-
-function positionPriceHistoryTooltip(anchor) {
-  const tooltip = getPriceHistoryTooltipEl();
+function positionHoverTooltip(tooltipEl, anchor) {
   const rect = anchor.getBoundingClientRect();
   const margin = 8;
   const gap = 6;
 
-  tooltip.hidden = false;
-  const tipRect = tooltip.getBoundingClientRect();
+  tooltipEl.hidden = false;
+  const tipRect = tooltipEl.getBoundingClientRect();
 
   let left = rect.left;
   let top = rect.bottom + gap;
@@ -512,38 +468,119 @@ function positionPriceHistoryTooltip(anchor) {
   }
   if (top < margin) top = margin;
 
-  tooltip.style.left = `${left}px`;
-  tooltip.style.top = `${top}px`;
+  tooltipEl.style.left = `${left}px`;
+  tooltipEl.style.top = `${top}px`;
 }
 
-function showPriceHistoryTooltip(history, anchor) {
-  const tooltip = getPriceHistoryTooltipEl();
-  tooltip.innerHTML = buildPriceHistoryTooltipContent(history);
-  priceHistoryTooltipAnchor = anchor;
-  tooltip.hidden = false;
-  positionPriceHistoryTooltip(anchor);
+function createHoverTooltip(id, extraClass = "") {
+  let el = null;
+  let anchor = null;
+
+  function getEl() {
+    if (!el) {
+      el = document.createElement("div");
+      el.id = id;
+      el.className = `hover-tooltip ${extraClass}`.trim();
+      el.hidden = true;
+      el.setAttribute("role", "tooltip");
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+
+  return {
+    get anchor() {
+      return anchor;
+    },
+    show(html, anchorEl) {
+      const tooltip = getEl();
+      tooltip.innerHTML = html;
+      anchor = anchorEl;
+      tooltip.hidden = false;
+      positionHoverTooltip(tooltip, anchorEl);
+    },
+    hide(anchorEl) {
+      if (!el) return;
+      if (anchorEl && anchor !== anchorEl) return;
+      el.hidden = true;
+      anchor = null;
+    },
+    wire(anchorEl, getHtml) {
+      const show = () => this.show(getHtml(), anchorEl);
+      const hide = () => this.hide(anchorEl);
+      anchorEl.onmouseenter = show;
+      anchorEl.onmouseleave = hide;
+      anchorEl.onfocus = show;
+      anchorEl.onblur = hide;
+    },
+    reposition() {
+      if (!el || el.hidden || !anchor) return;
+      positionHoverTooltip(el, anchor);
+    },
+  };
 }
 
-function hidePriceHistoryTooltip(anchor) {
-  if (!priceHistoryTooltipEl) return;
-  if (anchor && priceHistoryTooltipAnchor !== anchor) return;
-  priceHistoryTooltipEl.hidden = true;
-  priceHistoryTooltipAnchor = null;
+const priceHistoryTooltip = createHoverTooltip("price-history-tooltip", "price-history-tooltip");
+const titleDatesTooltip = createHoverTooltip("title-dates-tooltip", "title-dates-tooltip");
+
+function buildPriceHistoryTooltipContent(history) {
+  const rows = Array.isArray(history) ? history : [];
+  const header = `<div class="hover-tooltip-header"><strong>${escapeHtml(t("detail.priceHistory"))}</strong></div>`;
+  if (!rows.length) {
+    return `${header}<p class="hover-tooltip-fallback">${escapeHtml(t("detail.noHistory"))}</p>`;
+  }
+  const list = rows
+    .map(
+      (h) =>
+        `<div class="hover-tooltip-row"><span>${escapeHtml(formatDate(h.recorded_at))}</span><strong>${euro(h.price_eur)}</strong></div>`
+    )
+    .join("");
+  return `${header}<div class="hover-tooltip-rows">${list}</div>`;
+}
+
+function buildTitleDatesTooltipContent(listing) {
+  const rows = [
+    [t("detail.aiEvaluated"), formatDate(listing.ai_evaluated_at)],
+    [t("detail.scraped"), formatDate(listing.scraped_at)],
+    [t("detail.updated"), formatDate(listing.updated_at)],
+  ];
+  const list = rows
+    .map(
+      ([label, value]) =>
+        `<div class="hover-tooltip-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`
+    )
+    .join("");
+  return `<div class="hover-tooltip-rows">${list}</div>`;
+}
+
+function hideHoverTooltips() {
+  priceHistoryTooltip.hide();
+  titleDatesTooltip.hide();
 }
 
 function wirePriceHistoryTooltip(anchor, history) {
   const rows = Array.isArray(history) ? history : [];
-  anchor.classList.toggle("has-history", rows.length > 0);
+  anchor.classList.toggle("has-hover-tooltip", rows.length > 0);
   anchor.setAttribute("aria-label", t("detail.priceHistory"));
-
-  const show = () => showPriceHistoryTooltip(history, anchor);
-  const hide = () => hidePriceHistoryTooltip(anchor);
-
-  anchor.onmouseenter = show;
-  anchor.onmouseleave = hide;
-  anchor.onfocus = show;
-  anchor.onblur = hide;
+  priceHistoryTooltip.wire(anchor, () => buildPriceHistoryTooltipContent(history));
 }
+
+function wireTitleDatesTooltip(anchor, listing) {
+  anchor.classList.add("has-hover-tooltip");
+  titleDatesTooltip.wire(anchor, () => buildTitleDatesTooltipContent(listing));
+}
+
+window.addEventListener(
+  "scroll",
+  () => {
+    if (scoreTooltipAnchor && !scoreTooltipEl?.hidden) {
+      positionScoreTooltip(scoreTooltipAnchor);
+    }
+    priceHistoryTooltip.reposition();
+    titleDatesTooltip.reposition();
+  },
+  true
+);
 
 function formatDate(value) {
   if (value == null || value === "") return "—";
@@ -822,7 +859,7 @@ function commitListings({ push = false } = {}) {
 }
 
 function closeDetail({ push = true } = {}) {
-  hidePriceHistoryTooltip();
+  hideHoverTooltips();
   delete els.dialog.dataset.listingId;
   els.dialog.close();
   syncUrl({ push, clearItem: true });
@@ -830,7 +867,7 @@ function closeDetail({ push = true } = {}) {
 
 async function openDetail(id, { push = true } = {}) {
   hideScoreTooltip();
-  hidePriceHistoryTooltip();
+  hideHoverTooltips();
   const [listingRes, historyRes] = await Promise.all([
     fetch(`/api/listings/${id}?lang=${encodeURIComponent(getLocale())}`),
     fetch(`/api/listings/${id}/history`),
@@ -854,7 +891,9 @@ async function openDetail(id, { push = true } = {}) {
   ]
     .filter(Boolean)
     .join(" · ");
-  document.getElementById("detail-title").textContent = listing.title || t("untitled");
+  const titleEl = document.getElementById("detail-title");
+  titleEl.textContent = listing.title || t("untitled");
+  wireTitleDatesTooltip(titleEl, listing);
   const priceEl = document.getElementById("detail-price");
   priceEl.textContent = euro(listing.price_eur);
   wirePriceHistoryTooltip(priceEl, history);
@@ -915,9 +954,6 @@ async function openDetail(id, { push = true } = {}) {
     [t("detail.airspace"), listing.has_airspace ? t("yes") : t("no")],
     [t("detail.seaView"), listing.has_sea_view ? t("yes") : t("no")],
     [t("detail.shellForm"), listing.is_shell_form ? t("yes") : t("no")],
-    [t("detail.aiEvaluated"), formatDate(listing.ai_evaluated_at)],
-    [t("detail.scraped"), formatDate(listing.scraped_at)],
-    [t("detail.updated"), formatDate(listing.updated_at)],
   ];
   grid.innerHTML = fields
     .map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`)
