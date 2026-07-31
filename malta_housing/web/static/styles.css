@@ -675,9 +675,24 @@ body {
 }
 
 .detail-title-value,
-.detail-price-value {
+.detail-price-value,
+.detail-score-value {
   cursor: default;
   border-bottom: 1px dashed transparent;
+}
+
+.detail-score-value {
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+}
+
+.detail-title-value:focus-visible,
+.detail-price-value:focus-visible,
+.detail-score-value:focus-visible {
+  outline: 2px solid var(--sea-deep);
+  outline-offset: 3px;
+  border-radius: 2px;
 }
 
 .has-hover-tooltip {
@@ -688,13 +703,6 @@ body {
 .has-hover-tooltip:hover,
 .has-hover-tooltip:focus-visible {
   border-bottom-color: var(--sea-deep);
-}
-
-.detail-title-value:focus-visible,
-.detail-price-value:focus-visible {
-  outline: 2px solid var(--sea-deep);
-  outline-offset: 3px;
-  border-radius: 2px;
 }
 
 .detail-price {
@@ -1024,12 +1032,6 @@ body {
   font-size: 1.35rem;
   font-weight: 800;
   color: var(--sea-deep);
-}
-
-.detail-score-breakdown {
-  margin: 0 0 0.75rem;
-  font-size: 0.85rem;
-  color: var(--ink-soft);
 }
 
 .detail-bank-valuation {

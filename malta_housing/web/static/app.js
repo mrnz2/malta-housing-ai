@@ -533,6 +533,11 @@ const titleDatesTooltip = createHoverTooltip(
   "title-dates-tooltip",
   () => els.dialog
 );
+const scoreBreakdownTooltip = createHoverTooltip(
+  "score-breakdown-tooltip",
+  "score-breakdown-tooltip",
+  () => els.dialog
+);
 
 function buildPriceHistoryTooltipContent(history) {
   const rows = Array.isArray(history) ? history : [];
@@ -567,6 +572,26 @@ function buildTitleDatesTooltipContent(listing) {
 function hideHoverTooltips() {
   priceHistoryTooltip.hide();
   titleDatesTooltip.hide();
+  scoreBreakdownTooltip.hide();
+}
+
+function buildScoreBreakdownTooltipContent(breakdown) {
+  const html = renderScoreBreakdownRows(breakdown);
+  if (!html) return "";
+  return `<div class="score-tooltip-breakdown">${html}</div>`;
+}
+
+function wireScoreBreakdownTooltip(anchor, breakdown) {
+  const hasBreakdown = Boolean(buildScoreBreakdownTooltipContent(breakdown));
+  anchor.classList.toggle("has-hover-tooltip", hasBreakdown);
+  if (!hasBreakdown) {
+    anchor.onmouseenter = null;
+    anchor.onmouseleave = null;
+    anchor.onfocus = null;
+    anchor.onblur = null;
+    return;
+  }
+  scoreBreakdownTooltip.wire(anchor, () => buildScoreBreakdownTooltipContent(breakdown));
 }
 
 function wirePriceHistoryTooltip(anchor, history) {
@@ -589,6 +614,7 @@ window.addEventListener(
     }
     priceHistoryTooltip.reposition();
     titleDatesTooltip.reposition();
+    scoreBreakdownTooltip.reposition();
   },
   true
 );
@@ -919,16 +945,9 @@ async function openDetail(id, { push = true } = {}) {
       base != null && adj != null
         ? `${formatScore(listing.ai_score)} / 10 (base ${formatScore(base)} + LLM ${formatAdjustment(adj)})`
         : `${formatScore(listing.ai_score)} / 10`;
-    document.getElementById("detail-score").textContent = scoreText;
-    const breakdownEl = document.getElementById("detail-score-breakdown");
-    const breakdownHtml = renderScoreBreakdownRows(listing.score_breakdown);
-    if (breakdownHtml) {
-      breakdownEl.innerHTML = `<div class="score-breakdown-grid">${breakdownHtml}</div>`;
-      breakdownEl.hidden = false;
-    } else {
-      breakdownEl.innerHTML = "";
-      breakdownEl.hidden = true;
-    }
+    const scoreEl = document.getElementById("detail-score");
+    scoreEl.textContent = scoreText;
+    wireScoreBreakdownTooltip(scoreEl, listing.score_breakdown);
     const bankEl = document.getElementById("detail-bank-valuation");
     const bankHtml = formatBankValuation(listing.bank_valuation);
     bankEl.innerHTML = bankHtml;
