@@ -624,6 +624,7 @@ def save_listings_to_db(
 
         values = (
             title_en,
+            title_en,
             title_pl,
             item.get("price_eur"),
             item.get("locality"),
@@ -636,13 +637,13 @@ def save_listings_to_db(
             item.get("is_shell_form", False),
             ready,
             key_features_en,
+            key_features_en,
             key_features_pl,
             source,
             item.get("scraped_at"),
             item.get("updated_at") or now,
             distance_km,
             sea_proximity,
-            title_en,
             url,
         )
 
