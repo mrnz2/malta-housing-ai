@@ -1206,6 +1206,7 @@ els.close.addEventListener("click", () => closeDetail());
 els.dialog.addEventListener("click", (e) => {
   if (e.target === els.dialog) closeDetail();
 });
+els.dialog.querySelector(".detail-inner")?.addEventListener("scroll", hideHoverTooltips, { passive: true });
 els.dialog.addEventListener("close", () => {
   if (!els.dialog.dataset.listingId) return;
   delete els.dialog.dataset.listingId;
