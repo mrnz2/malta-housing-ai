@@ -149,7 +149,10 @@
       <header class="detail-head">
         <div>
           <p class="detail-kicker" id="detail-kicker"></p>
-          <h2 id="detail-title" class="detail-title-value" tabindex="0"></h2>
+          <div class="detail-title-row">
+            <h2 id="detail-title" class="detail-title-value" tabindex="0"></h2>
+            <div class="detail-features" id="detail-features"></div>
+          </div>
         </div>
         <div class="detail-head-actions">
           <button type="button" class="fav-btn" id="detail-fav" data-i18n-aria="detail.favorite" aria-label="Favorite" aria-pressed="false">♡</button>
@@ -187,7 +190,6 @@
       <button type="button" class="btn primary detail-notes-save" id="detail-notes-save" data-i18n="detail.saveNotes">Save notes</button>
       <p class="detail-notes-status" id="detail-notes-status" hidden></p>
       <dl class="detail-grid" id="detail-grid"></dl>
-      <div class="detail-features" id="detail-features"></div>
       <p class="detail-link"><a id="detail-url" href="#" target="_blank" rel="noopener" data-i18n="detail.openListing">Open original listing ↗</a></p>
     </div>
   </dialog>
