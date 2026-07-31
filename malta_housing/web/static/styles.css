@@ -677,6 +677,77 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.detail-price-value {
+  cursor: default;
+  border-bottom: 1px dashed transparent;
+}
+
+.detail-price-value.has-history {
+  cursor: help;
+  border-bottom-color: rgba(10, 107, 120, 0.35);
+}
+
+.detail-price-value.has-history:hover,
+.detail-price-value.has-history:focus-visible {
+  border-bottom-color: var(--sea-deep);
+}
+
+.detail-price-value:focus-visible {
+  outline: 2px solid var(--sea-deep);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.hover-tooltip {
+  position: fixed;
+  z-index: 2000;
+  max-width: 280px;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  background: rgba(15, 35, 45, 0.96);
+  color: #f4f8fa;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+.hover-tooltip-header {
+  margin-bottom: 0.45rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.hover-tooltip-header strong {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.hover-tooltip-fallback {
+  margin: 0;
+  color: rgba(244, 248, 250, 0.78);
+  font-size: 0.72rem;
+  font-style: italic;
+}
+
+.price-history-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.price-history-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.price-history-row strong {
+  font-weight: 700;
+  color: #fff;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -711,32 +782,6 @@ body {
   border-radius: 8px;
   background: rgba(10, 107, 120, 0.08);
   color: var(--sea-deep);
-}
-
-.history-block h3 {
-  margin: 0 0 0.5rem;
-  font-family: var(--font-display);
-  font-size: 1.1rem;
-  font-weight: 500;
-}
-
-.history-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.history-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.45rem 0;
-  border-bottom: 1px solid var(--line);
-  font-variant-numeric: tabular-nums;
-}
-
-.history-list li:last-child {
-  border-bottom: none;
 }
 
 .detail-link {

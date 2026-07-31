@@ -156,7 +156,9 @@
           <button type="button" class="btn ghost" id="detail-close" data-i18n-aria="detail.close" aria-label="Close" data-i18n="detail.close">Close</button>
         </div>
       </header>
-      <p class="detail-price" id="detail-price"></p>
+      <p class="detail-price" id="detail-price-wrap">
+        <span id="detail-price" class="detail-price-value" tabindex="0"></span>
+      </p>
       <section class="detail-evaluation" id="detail-evaluation" hidden>
         <h3 data-i18n="detail.aiScore">AI investment score</h3>
         <p class="detail-score" id="detail-score"></p>
@@ -186,10 +188,6 @@
       <p class="detail-notes-status" id="detail-notes-status" hidden></p>
       <dl class="detail-grid" id="detail-grid"></dl>
       <div class="detail-features" id="detail-features"></div>
-      <section class="history-block">
-        <h3 data-i18n="detail.priceHistory">Price history</h3>
-        <ol id="detail-history" class="history-list"></ol>
-      </section>
       <p class="detail-link"><a id="detail-url" href="#" target="_blank" rel="noopener" data-i18n="detail.openListing">Open original listing ↗</a></p>
     </div>
   </dialog>

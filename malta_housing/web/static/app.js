@@ -453,9 +453,97 @@ window.addEventListener(
     if (scoreTooltipAnchor && !scoreTooltipEl?.hidden) {
       positionScoreTooltip(scoreTooltipAnchor);
     }
+    if (priceHistoryTooltipAnchor && !priceHistoryTooltipEl?.hidden) {
+      positionPriceHistoryTooltip(priceHistoryTooltipAnchor);
+    }
   },
   true
 );
+
+function buildPriceHistoryTooltipContent(history) {
+  const rows = Array.isArray(history) ? history : [];
+  const header = `<div class="hover-tooltip-header"><strong>${escapeHtml(t("detail.priceHistory"))}</strong></div>`;
+  if (!rows.length) {
+    return `${header}<p class="hover-tooltip-fallback">${escapeHtml(t("detail.noHistory"))}</p>`;
+  }
+  const list = rows
+    .map(
+      (h) =>
+        `<div class="price-history-row"><span>${escapeHtml(formatDate(h.recorded_at))}</span><strong>${euro(h.price_eur)}</strong></div>`
+    )
+    .join("");
+  return `${header}<div class="price-history-rows">${list}</div>`;
+}
+
+let priceHistoryTooltipEl = null;
+let priceHistoryTooltipAnchor = null;
+
+function getPriceHistoryTooltipEl() {
+  if (!priceHistoryTooltipEl) {
+    priceHistoryTooltipEl = document.createElement("div");
+    priceHistoryTooltipEl.id = "price-history-tooltip";
+    priceHistoryTooltipEl.className = "hover-tooltip price-history-tooltip";
+    priceHistoryTooltipEl.hidden = true;
+    priceHistoryTooltipEl.setAttribute("role", "tooltip");
+    document.body.appendChild(priceHistoryTooltipEl);
+  }
+  return priceHistoryTooltipEl;
+}
+
+function positionPriceHistoryTooltip(anchor) {
+  const tooltip = getPriceHistoryTooltipEl();
+  const rect = anchor.getBoundingClientRect();
+  const margin = 8;
+  const gap = 6;
+
+  tooltip.hidden = false;
+  const tipRect = tooltip.getBoundingClientRect();
+
+  let left = rect.left;
+  let top = rect.bottom + gap;
+
+  if (left + tipRect.width > window.innerWidth - margin) {
+    left = window.innerWidth - tipRect.width - margin;
+  }
+  if (left < margin) left = margin;
+
+  if (top + tipRect.height > window.innerHeight - margin) {
+    top = rect.top - tipRect.height - gap;
+  }
+  if (top < margin) top = margin;
+
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+
+function showPriceHistoryTooltip(history, anchor) {
+  const tooltip = getPriceHistoryTooltipEl();
+  tooltip.innerHTML = buildPriceHistoryTooltipContent(history);
+  priceHistoryTooltipAnchor = anchor;
+  tooltip.hidden = false;
+  positionPriceHistoryTooltip(anchor);
+}
+
+function hidePriceHistoryTooltip(anchor) {
+  if (!priceHistoryTooltipEl) return;
+  if (anchor && priceHistoryTooltipAnchor !== anchor) return;
+  priceHistoryTooltipEl.hidden = true;
+  priceHistoryTooltipAnchor = null;
+}
+
+function wirePriceHistoryTooltip(anchor, history) {
+  const rows = Array.isArray(history) ? history : [];
+  anchor.classList.toggle("has-history", rows.length > 0);
+  anchor.setAttribute("aria-label", t("detail.priceHistory"));
+
+  const show = () => showPriceHistoryTooltip(history, anchor);
+  const hide = () => hidePriceHistoryTooltip(anchor);
+
+  anchor.onmouseenter = show;
+  anchor.onmouseleave = hide;
+  anchor.onfocus = show;
+  anchor.onblur = hide;
+}
 
 function formatDate(value) {
   if (value == null || value === "") return "—";
@@ -734,6 +822,7 @@ function commitListings({ push = false } = {}) {
 }
 
 function closeDetail({ push = true } = {}) {
+  hidePriceHistoryTooltip();
   delete els.dialog.dataset.listingId;
   els.dialog.close();
   syncUrl({ push, clearItem: true });
@@ -741,6 +830,7 @@ function closeDetail({ push = true } = {}) {
 
 async function openDetail(id, { push = true } = {}) {
   hideScoreTooltip();
+  hidePriceHistoryTooltip();
   const [listingRes, historyRes] = await Promise.all([
     fetch(`/api/listings/${id}?lang=${encodeURIComponent(getLocale())}`),
     fetch(`/api/listings/${id}/history`),
@@ -765,7 +855,9 @@ async function openDetail(id, { push = true } = {}) {
     .filter(Boolean)
     .join(" · ");
   document.getElementById("detail-title").textContent = listing.title || t("untitled");
-  document.getElementById("detail-price").textContent = euro(listing.price_eur);
+  const priceEl = document.getElementById("detail-price");
+  priceEl.textContent = euro(listing.price_eur);
+  wirePriceHistoryTooltip(priceEl, history);
 
   const evalBlock = document.getElementById("detail-evaluation");
   const hasScore = listing.ai_score != null && !Number.isNaN(Number(listing.ai_score));
@@ -836,16 +928,6 @@ async function openDetail(id, { push = true } = {}) {
   features.innerHTML = feats.length
     ? feats.map((f) => `<span class="feature">${escapeHtml(f)}</span>`).join("")
     : "";
-
-  const hist = document.getElementById("detail-history");
-  hist.innerHTML = history.length
-    ? history
-        .map(
-          (h) =>
-            `<li><span>${escapeHtml(formatDate(h.recorded_at))}</span><strong>${euro(h.price_eur)}</strong></li>`
-        )
-        .join("")
-    : `<li><span>${escapeHtml(t("detail.noHistory"))}</span><strong>—</strong></li>`;
 
   const link = document.getElementById("detail-url");
   link.href = listing.url || "#";
