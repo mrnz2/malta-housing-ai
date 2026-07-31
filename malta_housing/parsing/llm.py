@@ -64,10 +64,11 @@ def parse_with_llm(raw_listing: dict) -> MaltaPropertySchema:
 
     Zwróć WYŁĄCZNIE poprawny obiekt JSON zgody ze schematem:
     {{
-        "title": "string",
+        "title_en": "English title",
+        "title_pl": "Polski tytuł",
         "price_eur": 650000,
         "locality": "string lub null",
-        "property_type": "string lub null",
+        "property_type": "apartment",
         "bedrooms": 2,
         "seller_type": "OWNER/AGENT/SENSAR/UNKNOWN",
         "is_freehold": false,
@@ -75,8 +76,14 @@ def parse_with_llm(raw_listing: dict) -> MaltaPropertySchema:
         "has_sea_view": true,
         "is_shell_form": false,
         "ready": true,
-        "key_features": ["cecha 1", "cecha 2"]
+        "key_features_en": ["feature 1", "feature 2"],
+        "key_features_pl": ["cecha 1", "cecha 2"]
     }}
+
+    property_type MUSI być jednym z kodów: apartment, maisonette, penthouse, garage,
+    town_house, terraced_house, house_of_character, studio, land, villa, duplex, business, other.
+    title_en i title_pl: krótkie tytuły w odpowiednim języku.
+    key_features_en/pl: max 4 najważniejsze atuty w odpowiednim języku.
     """
 
     last_error: Exception | None = None

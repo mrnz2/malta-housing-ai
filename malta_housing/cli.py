@@ -24,6 +24,7 @@ from malta_housing.scrapers.remax import run_remax_scraper
 from malta_housing.scrapers.simonmamo import run_simonmamo_scraper
 from malta_housing.scrapers.yitaku import run_yitaku_scraper
 from malta_housing.analysis.ranker import run_rank
+from malta_housing.i18n.translate import run_translate
 from malta_housing.web.server import run_server
 
 
@@ -80,6 +81,17 @@ def cmd_rank(args: argparse.Namespace) -> None:
         source=args.source,
         force=args.force,
         new_only=args.new_only,
+    )
+
+
+def cmd_translate(args: argparse.Namespace) -> None:
+    listings = not args.evaluations_only
+    evaluations = not args.listings_only
+    run_translate(
+        force=args.force,
+        listings=listings,
+        evaluations=evaluations,
+        url=args.url,
     )
 
 
@@ -291,6 +303,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Only evaluate listings scraped on the latest scrape day",
     )
     p_rank.set_defaults(func=cmd_rank)
+
+    p_translate = sub.add_parser(
+        "translate",
+        help="Translate existing English DB text fields to Polish via Ollama (no re-scrape)",
+    )
+    p_translate.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-translate even when Polish columns are already filled",
+    )
+    p_translate.add_argument(
+        "--listings-only",
+        action="store_true",
+        help="Only translate listing fields (title, key_features)",
+    )
+    p_translate.add_argument(
+        "--evaluations-only",
+        action="store_true",
+        help="Only translate AI evaluation fields (summary, pros, cons, warnings)",
+    )
+    p_translate.add_argument(
+        "--url",
+        default=None,
+        help="Translate a single listing by URL",
+    )
+    p_translate.set_defaults(func=cmd_translate)
 
     return parser
 

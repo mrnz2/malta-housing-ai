@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from malta_housing.db.store import _connect
+from malta_housing.i18n.localize import localize_listing, localized_filter_options, normalize_locale
+from malta_housing.i18n.property_types import normalize_property_type
 from malta_housing.paths import DB_PATH
 
 _EMPTY_STATS: dict[str, Any] = {
@@ -131,34 +133,37 @@ _LIST_ORDER_SQL = {
 }
 
 _LISTING_COLUMNS = """
-    id, url, title, price_eur, locality, property_type, bedrooms,
+    id, url, title, title_en, title_pl, price_eur, locality, property_type, bedrooms,
     seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form, ready,
-    key_features, source, scraped_at, created_at, updated_at,
+    key_features, key_features_en, key_features_pl,
+    source, scraped_at, created_at, updated_at,
     distance_to_gzira_km, is_hidden, is_fav, notes,
-    ai_score, ai_summary, ai_evaluated_at, sea_proximity
+    ai_score, ai_summary, ai_summary_en, ai_summary_pl, ai_evaluated_at, sea_proximity
 """
 
 _LISTING_COLUMNS_QUALIFIED = """
-    listings.id, listings.url, listings.title, listings.price_eur, listings.locality,
-    listings.property_type, listings.bedrooms, listings.seller_type, listings.is_freehold,
-    listings.has_airspace, listings.has_sea_view, listings.is_shell_form, listings.ready,
-    listings.key_features, listings.source, listings.scraped_at, listings.created_at,
+    listings.id, listings.url, listings.title, listings.title_en, listings.title_pl,
+    listings.price_eur, listings.locality, listings.property_type, listings.bedrooms,
+    listings.seller_type, listings.is_freehold, listings.has_airspace, listings.has_sea_view,
+    listings.is_shell_form, listings.ready, listings.key_features, listings.key_features_en,
+    listings.key_features_pl, listings.source, listings.scraped_at, listings.created_at,
     listings.updated_at, listings.distance_to_gzira_km, listings.is_hidden, listings.is_fav,
-    listings.notes, listings.ai_score, listings.ai_summary, listings.ai_evaluated_at,
-    listings.sea_proximity
+    listings.notes, listings.ai_score, listings.ai_summary, listings.ai_summary_en,
+    listings.ai_summary_pl, listings.ai_evaluated_at, listings.sea_proximity
 """
 
 
 def _row_to_listing(row: sqlite3.Row) -> dict[str, Any]:
     data = dict(row)
-    features = data.get("key_features")
-    if isinstance(features, str):
-        try:
-            data["key_features"] = json.loads(features)
-        except json.JSONDecodeError:
-            data["key_features"] = []
-    elif features is None:
-        data["key_features"] = []
+    for field in ("key_features", "key_features_en", "key_features_pl"):
+        features = data.get(field)
+        if isinstance(features, str):
+            try:
+                data[field] = json.loads(features)
+            except json.JSONDecodeError:
+                data[field] = []
+        elif features is None:
+            data[field] = []
     for flag in ("is_freehold", "has_airspace", "has_sea_view", "is_shell_form", "is_hidden", "is_fav"):
         if flag in data and data[flag] is not None:
             data[flag] = bool(data[flag])
@@ -249,7 +254,8 @@ _VISIBLE_LIST = "(listings.is_hidden = 0 OR listings.is_hidden IS NULL)"
 _HIDDEN_LIST = "listings.is_hidden = 1"
 
 
-def get_stats(db_name: str | Path = DB_PATH) -> dict[str, Any]:
+def get_stats(db_name: str | Path = DB_PATH, *, locale: str = "en") -> dict[str, Any]:
+    loc = normalize_locale(locale)
     if not Path(db_name).exists():
         return dict(_EMPTY_STATS)
 
@@ -342,8 +348,9 @@ def get_stats(db_name: str | Path = DB_PATH) -> dict[str, Any]:
         ),
         "sources": sources,
         "localities": localities,
-        "seller_types": seller_types,
-        "property_types": property_types,
+        "seller_types": localized_filter_options(seller_types, "seller_type", loc),
+        "property_types": localized_filter_options(property_types, "property_type", loc),
+        "locale": loc,
     }
 
 
@@ -363,10 +370,12 @@ def list_listings(
     sort: str = "created_desc",
     limit: int = 100,
     offset: int = 0,
+    locale: str = "en",
     db_name: str | Path = DB_PATH,
 ) -> dict[str, Any]:
+    loc = normalize_locale(locale)
     if not Path(db_name).exists():
-        return {"total": 0, "items": [], "limit": limit, "offset": offset}
+        return {"total": 0, "items": [], "limit": limit, "offset": offset, "locale": loc}
 
     where: list[str] = []
     params: list[Any] = []
@@ -378,10 +387,11 @@ def list_listings(
 
     if q:
         where.append(
-            "(listings.title LIKE ? OR listings.locality LIKE ? OR listings.url LIKE ?)"
+            "(listings.title LIKE ? OR listings.title_en LIKE ? OR listings.title_pl LIKE ? "
+            "OR listings.locality LIKE ? OR listings.url LIKE ?)"
         )
         like = f"%{q}%"
-        params.extend([like, like, like])
+        params.extend([like, like, like, like, like])
     if locality:
         where.append("listings.locality = ?")
         params.append(locality)
@@ -392,8 +402,9 @@ def list_listings(
         where.append("listings.seller_type = ?")
         params.append(seller_type)
     if property_type:
+        normalized = normalize_property_type(property_type) or property_type
         where.append("listings.property_type = ?")
-        params.append(property_type)
+        params.append(normalized)
     if min_price is not None:
         where.append("listings.price_eur >= ?")
         params.append(min_price)
@@ -434,17 +445,22 @@ def list_listings(
             """,
             [*params, limit, offset],
         )
-        items = [_row_to_listing(row) for row in cur.fetchall()]
+        items = [
+            localize_listing(_row_to_listing(row), loc) for row in cur.fetchall()
+        ]
         _annotate_is_new(items)
     except sqlite3.OperationalError:
         conn.close()
-        return {"total": 0, "items": [], "limit": limit, "offset": offset}
+        return {"total": 0, "items": [], "limit": limit, "offset": offset, "locale": loc}
 
     conn.close()
-    return {"total": total, "items": items, "limit": limit, "offset": offset}
+    return {"total": total, "items": items, "limit": limit, "offset": offset, "locale": loc}
 
 
-def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any] | None:
+def get_listing(
+    listing_id: int, db_name: str | Path = DB_PATH, *, locale: str = "en"
+) -> dict[str, Any] | None:
+    loc = normalize_locale(locale)
     if not Path(db_name).exists():
         return None
     conn = _connect(db_name)
@@ -454,7 +470,8 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
             f"""
             SELECT
                 {_LISTING_COLUMNS_QUALIFIED},
-                e.pros, e.cons, e.evaluation_json
+                e.pros, e.cons, e.pros_en, e.pros_pl, e.cons_en, e.cons_pl,
+                e.buyer_warnings_en, e.buyer_warnings_pl, e.evaluation_json
             FROM listings
             LEFT JOIN evaluations e ON e.url = listings.url
             WHERE listings.id = ?
@@ -468,12 +485,15 @@ def get_listing(listing_id: int, db_name: str | Path = DB_PATH) -> dict[str, Any
     conn.close()
     if not row:
         return None
-    listing = _enrich_with_evaluation(_row_to_listing(row))
+    listing = localize_listing(_enrich_with_evaluation(_row_to_listing(row)), loc)
     _annotate_is_new([listing])
     return listing
 
 
-def get_listing_by_url(url: str, db_name: str | Path = DB_PATH) -> dict[str, Any] | None:
+def get_listing_by_url(
+    url: str, db_name: str | Path = DB_PATH, *, locale: str = "en"
+) -> dict[str, Any] | None:
+    loc = normalize_locale(locale)
     if not Path(db_name).exists():
         return None
     conn = _connect(db_name)
@@ -483,7 +503,8 @@ def get_listing_by_url(url: str, db_name: str | Path = DB_PATH) -> dict[str, Any
             f"""
             SELECT
                 {_LISTING_COLUMNS_QUALIFIED},
-                e.pros, e.cons, e.evaluation_json
+                e.pros, e.cons, e.pros_en, e.pros_pl, e.cons_en, e.cons_pl,
+                e.buyer_warnings_en, e.buyer_warnings_pl, e.evaluation_json
             FROM listings
             LEFT JOIN evaluations e ON e.url = listings.url
             WHERE listings.url = ?
@@ -497,7 +518,7 @@ def get_listing_by_url(url: str, db_name: str | Path = DB_PATH) -> dict[str, Any
     conn.close()
     if not row:
         return None
-    listing = _enrich_with_evaluation(_row_to_listing(row))
+    listing = localize_listing(_enrich_with_evaluation(_row_to_listing(row)), loc)
     _annotate_is_new([listing])
     return listing
 
@@ -543,18 +564,14 @@ def get_rank_candidates(
 
 
 def _enrich_with_evaluation(row: dict[str, Any]) -> dict[str, Any]:
-    pros = row.get("pros")
-    cons = row.get("cons")
-    if isinstance(pros, str):
-        try:
-            row["pros"] = json.loads(pros)
-        except json.JSONDecodeError:
-            row["pros"] = []
-    if isinstance(cons, str):
-        try:
-            row["cons"] = json.loads(cons)
-        except json.JSONDecodeError:
-            row["cons"] = []
+    for field in ("pros", "cons", "pros_en", "pros_pl", "cons_en", "cons_pl",
+                  "buyer_warnings_en", "buyer_warnings_pl"):
+        value = row.get(field)
+        if isinstance(value, str):
+            try:
+                row[field] = json.loads(value)
+            except json.JSONDecodeError:
+                row[field] = []
 
     payload = row.get("evaluation_json")
     if isinstance(payload, str) and payload.strip():
@@ -570,6 +587,7 @@ def _enrich_with_evaluation(row: dict[str, Any]) -> dict[str, Any]:
                 "metrics",
                 "bank_valuation",
                 "buyer_warnings_pl",
+                "buyer_warnings_en",
                 "valuation_facts",
             ):
                 if key in evaluation and key not in row:
@@ -605,7 +623,8 @@ def get_ranked_listings(
             f"""
             SELECT
                 {_LISTING_COLUMNS_QUALIFIED},
-                e.pros, e.cons, e.evaluation_json, e.evaluated_at
+                e.pros, e.cons, e.pros_en, e.pros_pl, e.cons_en, e.cons_pl,
+                e.buyer_warnings_en, e.buyer_warnings_pl, e.evaluation_json, e.evaluated_at
             FROM listings
             LEFT JOIN evaluations e ON e.url = listings.url
             {where_sql}

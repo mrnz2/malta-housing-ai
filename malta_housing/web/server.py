@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from malta_housing.common import configure_stdio
 from malta_housing.db import queries
 from malta_housing.db.store import init_db, set_listing_fav, set_listing_hidden, set_listing_notes, set_listing_ready
+from malta_housing.i18n.localize import normalize_locale
 from malta_housing.manual_import import run_manual_pipeline
 from malta_housing.paths import DB_PATH, PACKAGE_ROOT
 
@@ -132,6 +133,19 @@ def _parse_bool(values: list[str] | None) -> bool | None:
     return values[0].lower() in {"1", "true", "yes", "on"}
 
 
+def _parse_locale(qs: dict[str, list[str]], header: str | None) -> str:
+    if qs.get("lang"):
+        return normalize_locale(qs["lang"][0])
+    if header:
+        for part in header.split(","):
+            token = part.split(";")[0].strip().lower()
+            if token.startswith("pl"):
+                return "pl"
+            if token.startswith("en"):
+                return "en"
+    return "en"
+
+
 class BrowseHandler(BaseHTTPRequestHandler):
     server_version = "MaltaHousingBrowse/1.0"
 
@@ -142,6 +156,7 @@ class BrowseHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
         qs = parse_qs(parsed.query)
+        locale = _parse_locale(qs, self.headers.get("Accept-Language"))
 
         if path in {"/", "/index.html"}:
             self._serve_file(STATIC_DIR / "index.html")
@@ -157,7 +172,7 @@ class BrowseHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/stats":
-            self._send(*_json_bytes(queries.get_stats()))
+            self._send(*_json_bytes(queries.get_stats(locale=locale)))
             return
 
         if path == "/api/listings":
@@ -176,13 +191,14 @@ class BrowseHandler(BaseHTTPRequestHandler):
                 sort=(qs.get("sort") or ["ai_score_desc"])[0],
                 limit=_parse_int(qs.get("limit")) or 100,
                 offset=_parse_int(qs.get("offset")) or 0,
+                locale=locale,
             )
             self._send(*_json_bytes(payload))
             return
 
         match = re.fullmatch(r"/api/listings/(\d+)", path)
         if match:
-            listing = queries.get_listing(int(match.group(1)))
+            listing = queries.get_listing(int(match.group(1)), locale=locale)
             if listing is None:
                 self._send(*_json_bytes({"error": "Listing not found"}, 404))
                 return

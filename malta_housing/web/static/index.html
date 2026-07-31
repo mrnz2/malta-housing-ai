@@ -14,91 +14,95 @@
 
   <header class="top">
     <div class="brand-block">
-      <p class="brand">Malta Housing</p>
-      <p class="tagline">Local listings browser</p>
+      <p class="brand" data-i18n="brand">Malta Housing</p>
+      <p class="tagline" data-i18n="tagline">Local listings browser</p>
+    </div>
+    <div class="lang-switch" role="group" aria-label="Language">
+      <button type="button" class="btn ghost" data-lang="en" data-i18n="lang.en">EN</button>
+      <button type="button" class="btn ghost" data-lang="pl" data-i18n="lang.pl">PL</button>
     </div>
     <div class="summary" id="summary">
-      <span class="summary-item"><strong id="stat-total">—</strong> listings</span>
-      <span class="summary-item">avg <strong id="stat-avg">—</strong></span>
-      <span class="summary-item"><strong id="stat-scored">—</strong> scored</span>
-      <span class="summary-item">avg score <strong id="stat-avg-score">—</strong></span>
+      <span class="summary-item"><strong id="stat-total">—</strong> <span data-i18n="stats.listings">listings</span></span>
+      <span class="summary-item"><span data-i18n="stats.avg">avg</span> <strong id="stat-avg">—</strong></span>
+      <span class="summary-item"><strong id="stat-scored">—</strong> <span data-i18n="stats.scored">scored</span></span>
+      <span class="summary-item"><span data-i18n="stats.avgScore">avg score</span> <strong id="stat-avg-score">—</strong></span>
     </div>
   </header>
 
   <main class="layout">
-    <aside class="filters" aria-label="Filters">
+    <aside class="filters" data-i18n-aria="filters.label">
       <form id="filter-form">
         <label class="field">
-          <span>Search</span>
-          <input type="search" name="q" placeholder="Title, town, URL…" autocomplete="off" />
+          <span data-i18n="filters.search">Search</span>
+          <input type="search" name="q" data-i18n-placeholder="filters.searchPlaceholder" placeholder="Title, town, URL…" autocomplete="off" />
         </label>
 
         <label class="field">
-          <span>Locality</span>
+          <span data-i18n="filters.locality">Locality</span>
           <select name="locality" id="filter-locality">
-            <option value="">All</option>
+            <option value="" data-i18n="filters.all">All</option>
           </select>
         </label>
 
         <label class="field">
-          <span>Source</span>
+          <span data-i18n="filters.source">Source</span>
           <select name="source" id="filter-source">
-            <option value="">All</option>
+            <option value="" data-i18n="filters.all">All</option>
           </select>
         </label>
 
         <label class="field">
-          <span>Seller</span>
+          <span data-i18n="filters.seller">Seller</span>
           <select name="seller_type" id="filter-seller">
-            <option value="">All</option>
+            <option value="" data-i18n="filters.all">All</option>
           </select>
         </label>
 
         <label class="field">
-          <span>Type</span>
+          <span data-i18n="filters.type">Type</span>
           <select name="property_type" id="filter-type">
-            <option value="">All</option>
+            <option value="" data-i18n="filters.all">All</option>
           </select>
         </label>
 
         <div class="field-row">
           <label class="field">
-            <span>Min €</span>
+            <span data-i18n="filters.minPrice">Min €</span>
             <input type="number" name="min_price" min="0" step="1000" placeholder="0" />
           </label>
           </br></br>
           <label class="field">
-            <span>Max €</span>
+            <span data-i18n="filters.maxPrice">Max €</span>
             <input type="number" name="max_price" min="0" step="1000" placeholder="…" />
           </label>
         </div>
 
         <div class="checks">
-          <label class="check"><input type="checkbox" name="freehold" value="1" /> Freehold</label>
-          <label class="check"><input type="checkbox" name="airspace" value="1" /> Airspace</label>
-          <label class="check"><input type="checkbox" name="show_hidden" value="1" /> Show hidden</label>
-          <label class="check"><input type="checkbox" name="fav_only" value="1" /> Favorites only</label>
+          <label class="check"><input type="checkbox" name="freehold" value="1" /> <span data-i18n="filters.freehold">Freehold</span></label>
+          <label class="check"><input type="checkbox" name="airspace" value="1" /> <span data-i18n="filters.airspace">Airspace</span></label>
+          <label class="check"><input type="checkbox" name="show_hidden" value="1" /> <span data-i18n="filters.showHidden">Show hidden</span></label>
+          <label class="check"><input type="checkbox" name="fav_only" value="1" /> <span data-i18n="filters.favOnly">Favorites only</span></label>
         </div>
 
         <label class="field">
-          <span>Sort</span>
+          <span data-i18n="filters.sort">Sort</span>
           <select name="sort" id="filter-sort">
-            <option value="created_desc">Newest added</option>
-            <option value="updated_desc">Recently updated</option>
-            <option value="price_asc">Price ↑</option>
-            <option value="price_desc">Price ↓</option>
-            <option value="locality_asc">Locality A–Z</option>
-            <option value="title_asc">Title A–Z</option>
-            <option value="gzira_asc">Distance to Gżira ↑</option>
-            <option value="gzira_desc">Distance to Gżira ↓</option>
-            <option value="ai_score_desc" selected>New first, then AI score ↓</option>
-            <option value="ai_score_asc">AI score ↑</option>
+            <option value="created_desc" data-i18n="sort.created_desc">Newest added</option>
+            <option value="updated_desc" data-i18n="sort.updated_desc">Recently updated</option>
+            <option value="price_asc" data-i18n="sort.price_asc">Price ↑</option>
+            <option value="price_desc" data-i18n="sort.price_desc">Price ↓</option>
+            <option value="locality_asc" data-i18n="sort.locality_asc">Locality A–Z</option>
+            <option value="title_asc" data-i18n="sort.title_asc">Title A–Z</option>
+            <option value="gzira_asc" data-i18n="sort.gzira_asc">Distance to Gżira ↑</option>
+            <option value="gzira_desc" data-i18n="sort.gzira_desc">Distance to Gżira ↓</option>
+            <option value="ai_score_desc" selected data-i18n="sort.ai_score_desc">New first, then AI score ↓</option>
+            <option value="ai_score_asc" data-i18n="sort.ai_score_asc">AI score ↑</option>
           </select>
         </label>
 
         <div class="filter-actions">
-          <button type="submit" class="btn primary">Apply</button>
-          <button type="reset" class="btn ghost">Reset</button>
+          <button type="submit" class="btn primary" data-i18n="filters.apply">Apply</button>
+          <button type="reset" class="btn ghost" data-i18n="filters.reset">Reset</button>
         </div>
       </form>
     </aside>
@@ -106,36 +110,36 @@
     <section class="results" aria-live="polite">
       <div class="results-bar">
         <div class="results-bar-head">
-          <h1 class="results-title">Listings</h1>
-          <button type="button" class="btn icon-btn" id="import-open" aria-label="Import listing HTML">+</button>
+          <h1 class="results-title" data-i18n="results.title">Listings</h1>
+          <button type="button" class="btn icon-btn" id="import-open" data-i18n-aria="results.import" aria-label="Import listing HTML">+</button>
         </div>
-        <p class="results-count" id="results-count">Loading…</p>
+        <p class="results-count" id="results-count" data-i18n="results.loading">Loading…</p>
       </div>
       <div class="table-wrap">
         <table class="listings-table">
           <thead>
             <tr>
-              <th>Title</th>
-              <th class="sortable-th" id="sort-score" data-sort="ai_score" title="Sort by AI score">Score</th>
-              <th>Locality</th>
-              <th>→ Gżira</th>
-              <th>Sea</th>
-              <th>Price</th>
-              <th>€/m2</th>
-              <th>Beds</th>
-              <th>Source</th>
-              <th>Ready</th>
-              <th>Fav</th>
-              <th>Hide</th>
+              <th data-i18n="table.title">Title</th>
+              <th class="sortable-th" id="sort-score" data-sort="ai_score" data-i18n-title="table.score" title="Sort by AI score" data-i18n="table.score">Score</th>
+              <th data-i18n="table.locality">Locality</th>
+              <th data-i18n="table.gzira">→ Gżira</th>
+              <th data-i18n="table.sea">Sea</th>
+              <th data-i18n="table.price">Price</th>
+              <th data-i18n="table.priceSqm">€/m2</th>
+              <th data-i18n="table.beds">Beds</th>
+              <th data-i18n="table.source">Source</th>
+              <th data-i18n="table.ready">Ready</th>
+              <th data-i18n="table.fav">Fav</th>
+              <th data-i18n="table.hide">Hide</th>
             </tr>
           </thead>
           <tbody id="listings-body"></tbody>
         </table>
       </div>
       <div class="pager" id="pager" hidden>
-        <button type="button" class="btn ghost" id="prev-page">Previous</button>
+        <button type="button" class="btn ghost" id="prev-page" data-i18n="pager.prev">Previous</button>
         <span id="page-label"></span>
-        <button type="button" class="btn ghost" id="next-page">Next</button>
+        <button type="button" class="btn ghost" id="next-page" data-i18n="pager.next">Next</button>
       </div>
     </section>
   </main>
@@ -148,13 +152,13 @@
           <h2 id="detail-title"></h2>
         </div>
         <div class="detail-head-actions">
-          <button type="button" class="fav-btn" id="detail-fav" aria-label="Favorite" aria-pressed="false">♡</button>
-          <button type="button" class="btn ghost" id="detail-close" aria-label="Close">Close</button>
+          <button type="button" class="fav-btn" id="detail-fav" data-i18n-aria="detail.favorite" aria-label="Favorite" aria-pressed="false">♡</button>
+          <button type="button" class="btn ghost" id="detail-close" data-i18n-aria="detail.close" aria-label="Close" data-i18n="detail.close">Close</button>
         </div>
       </header>
       <p class="detail-price" id="detail-price"></p>
       <section class="detail-evaluation" id="detail-evaluation" hidden>
-        <h3>AI investment score</h3>
+        <h3 data-i18n="detail.aiScore">AI investment score</h3>
         <p class="detail-score" id="detail-score"></p>
         <p class="detail-score-breakdown" id="detail-score-breakdown" hidden></p>
         <div class="detail-bank-valuation" id="detail-bank-valuation" hidden></div>
@@ -164,53 +168,53 @@
         <ul class="detail-cons" id="detail-cons"></ul>
       </section>
       <label class="check detail-hide">
-        <input type="checkbox" id="detail-hidden" /> Hide
+        <input type="checkbox" id="detail-hidden" /> <span data-i18n="detail.hide">Hide</span>
       </label>
       <label class="field detail-ready-field">
-        <span>Ready to move in</span>
+        <span data-i18n="detail.ready">Ready to move in</span>
         <select id="detail-ready">
-          <option value="unknown">?</option>
-          <option value="true">Yes</option>
-          <option value="false">No</option>
+          <option value="unknown" data-i18n="unknown">?</option>
+          <option value="true" data-i18n="yes">Yes</option>
+          <option value="false" data-i18n="no">No</option>
         </select>
       </label>
       <label class="field detail-notes-field">
-        <span>Notes</span>
-        <textarea id="detail-notes" rows="3" placeholder="Add a note…"></textarea>
+        <span data-i18n="detail.notes">Notes</span>
+        <textarea id="detail-notes" rows="3" data-i18n-placeholder="detail.notesPlaceholder" placeholder="Add a note…"></textarea>
       </label>
-      <button type="button" class="btn primary detail-notes-save" id="detail-notes-save">Save notes</button>
+      <button type="button" class="btn primary detail-notes-save" id="detail-notes-save" data-i18n="detail.saveNotes">Save notes</button>
       <p class="detail-notes-status" id="detail-notes-status" hidden></p>
       <dl class="detail-grid" id="detail-grid"></dl>
       <div class="detail-features" id="detail-features"></div>
       <section class="history-block">
-        <h3>Price history</h3>
+        <h3 data-i18n="detail.priceHistory">Price history</h3>
         <ol id="detail-history" class="history-list"></ol>
       </section>
-      <p class="detail-link"><a id="detail-url" href="#" target="_blank" rel="noopener">Open original listing ↗</a></p>
+      <p class="detail-link"><a id="detail-url" href="#" target="_blank" rel="noopener" data-i18n="detail.openListing">Open original listing ↗</a></p>
     </div>
   </dialog>
 
   <dialog id="import-dialog" class="import-dialog">
     <div class="import-inner">
       <header class="import-head">
-        <h2>Import listing HTML</h2>
-        <button type="button" class="btn ghost" id="import-close" aria-label="Close">Close</button>
+        <h2 data-i18n="import.title">Import listing HTML</h2>
+        <button type="button" class="btn ghost" id="import-close" data-i18n-aria="detail.close" aria-label="Close" data-i18n="detail.close">Close</button>
       </header>
-      <p class="import-hint">
+      <p class="import-hint" data-i18n="import.hint">
         Paste page source from your browser (View Source). URL is optional — extracted from the page when missing.
         RE/MAX and Yitaku use generic text extraction from pasted HTML.
       </p>
       <label class="field">
-        <span>Listing URL (optional)</span>
-        <input type="url" id="import-url" placeholder="https://…" autocomplete="off" />
+        <span data-i18n="import.url">Listing URL (optional)</span>
+        <input type="url" id="import-url" data-i18n-placeholder="import.urlPlaceholder" placeholder="https://…" autocomplete="off" />
       </label>
       <label class="field">
-        <span>Page HTML</span>
-        <textarea id="import-html" rows="12" placeholder="Paste full HTML here…"></textarea>
+        <span data-i18n="import.html">Page HTML</span>
+        <textarea id="import-html" rows="12" data-i18n-placeholder="import.htmlPlaceholder" placeholder="Paste full HTML here…"></textarea>
       </label>
       <div class="import-actions">
-        <button type="button" class="btn primary" id="import-submit">Import</button>
-        <button type="button" class="btn ghost" id="import-cancel">Cancel</button>
+        <button type="button" class="btn primary" id="import-submit" data-i18n="import.submit">Import</button>
+        <button type="button" class="btn ghost" id="import-cancel" data-i18n="import.cancel">Cancel</button>
       </div>
       <p class="import-status" id="import-status" hidden></p>
     </div>

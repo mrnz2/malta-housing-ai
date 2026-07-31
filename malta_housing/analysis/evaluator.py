@@ -386,10 +386,14 @@ Return ONLY valid JSON with this exact shape:
     }}
   }},
   "qualitative_adjustment": 0.5,
-  "pros": ["advantage 1"],
-  "cons": ["risk 1"],
-  "summary": "Two concise sentences in English summarizing the investment case.",
-  "buyer_warnings_pl": ["Ostrzeżenie po polsku dla kupującego"]
+  "summary_en": "Two concise English sentences summarizing the investment case.",
+  "summary_pl": "Dwa zwięzłe zdania po polsku podsumowujące inwestycję.",
+  "pros_en": ["advantage 1"],
+  "pros_pl": ["zaleta 1"],
+  "cons_en": ["risk 1"],
+  "cons_pl": ["ryzyko 1"],
+  "buyer_warnings_en": ["English warning before konvenju"],
+  "buyer_warnings_pl": ["Ostrzeżenie po polsku przed konvenju"]
 }}
 
 Rules:
@@ -401,8 +405,8 @@ Rules:
 - qualitative_adjustment: number from {LLM_ADJUSTMENT_MIN} to {LLM_ADJUSTMENT_MAX}.
   Negative for PA issues, noise, hidden costs, unrealistic claims.
   Positive for recent renovation, exceptional layout, strong rental demand.
-- pros/cons: at most 3 short strings each, qualitative only.
-- buyer_warnings_pl: at most 3 short Polish warnings before konvenju (ground rent, garage, metraż).
+- pros/cons: at most 3 short strings each per language, qualitative only.
+- buyer_warnings_en/pl: at most 3 short warnings before konvenju (ground rent, garage, area).
 """
 
 
@@ -457,9 +461,10 @@ def _validate_evaluation(
     else:
         raise ValueError("missing qualitative_adjustment")
 
-    summary = str(data.get("summary", "")).strip()
-    if not summary:
-        raise ValueError("missing summary")
+    summary_en = str(data.get("summary_en") or data.get("summary", "")).strip()
+    summary_pl = str(data.get("summary_pl") or summary_en).strip()
+    if not summary_en:
+        raise ValueError("missing summary_en")
 
     investment_score = _clamp_score(base_score + adjustment)
 
@@ -467,14 +472,32 @@ def _validate_evaluation(
     if not isinstance(llm_facts, dict):
         llm_facts = {}
 
+    pros_en = _normalize_str_list(data.get("pros_en") or data.get("pros"))
+    pros_pl = _normalize_str_list(data.get("pros_pl") or pros_en)
+    cons_en = _normalize_str_list(data.get("cons_en") or data.get("cons"))
+    cons_pl = _normalize_str_list(data.get("cons_pl") or cons_en)
+    warnings_en = _normalize_str_list(
+        data.get("buyer_warnings_en"), max_items=5
+    )
+    warnings_pl = _normalize_str_list(
+        data.get("buyer_warnings_pl") or data.get("buyer_warnings"), max_items=5
+    )
+
     return {
         "investment_score": investment_score,
         "base_score": round(base_score, 2),
         "qualitative_adjustment": adjustment,
-        "pros": _normalize_str_list(data.get("pros")),
-        "cons": _normalize_str_list(data.get("cons")),
-        "summary": summary,
-        "buyer_warnings_pl": _normalize_str_list(data.get("buyer_warnings_pl"), max_items=5),
+        "summary": summary_en,
+        "summary_en": summary_en,
+        "summary_pl": summary_pl,
+        "pros": pros_en,
+        "pros_en": pros_en,
+        "pros_pl": pros_pl,
+        "cons": cons_en,
+        "cons_en": cons_en,
+        "cons_pl": cons_pl,
+        "buyer_warnings_en": warnings_en,
+        "buyer_warnings_pl": warnings_pl,
         "llm_valuation_facts": llm_facts,
     }
 

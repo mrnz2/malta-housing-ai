@@ -1,3 +1,5 @@
+import { applyTranslations, getLocale, initI18n, intlLocale, t, wireLangSwitcher } from "./i18n.js";
+
 const PAGE_SIZE = 50;
 const DEFAULT_SORT = "ai_score_desc";
 const FILTER_KEYS = [
@@ -59,7 +61,7 @@ const els = {
 
 function euro(value) {
   if (value == null || Number.isNaN(Number(value))) return "—";
-  return new Intl.NumberFormat("en-MT", {
+  return new Intl.NumberFormat(intlLocale(), {
     style: "currency",
     currency: "EUR",
     maximumFractionDigits: 0,
@@ -71,17 +73,22 @@ function formatPricePerSqm(value) {
   return euro(value);
 }
 
-function fillSelect(select, values, blankLabel = "All") {
+function fillSelect(select, values, blankLabel = null) {
   const current = select.value;
   select.innerHTML = "";
   const blank = document.createElement("option");
   blank.value = "";
-  blank.textContent = blankLabel;
+  blank.textContent = blankLabel ?? t("filters.all");
   select.appendChild(blank);
   for (const value of values) {
     const opt = document.createElement("option");
-    opt.value = value;
-    opt.textContent = value;
+    if (value && typeof value === "object" && "code" in value) {
+      opt.value = value.code;
+      opt.textContent = value.label || value.code;
+    } else {
+      opt.value = value;
+      opt.textContent = value;
+    }
     select.appendChild(opt);
   }
   if ([...select.options].some((o) => o.value === current)) {
@@ -169,11 +176,12 @@ function buildQuery(extra = {}) {
   const params = new URLSearchParams({ ...state.filters, ...extra });
   params.set("limit", String(PAGE_SIZE));
   params.set("offset", String(state.offset));
+  params.set("lang", getLocale());
   return params.toString();
 }
 
 async function loadStats() {
-  const res = await fetch("/api/stats");
+  const res = await fetch(`/api/stats?lang=${encodeURIComponent(getLocale())}`);
   const stats = await res.json();
   els.statTotal.textContent = String(stats.total ?? 0);
   els.statAvg.textContent = euro(stats.avg_price);
@@ -207,17 +215,17 @@ function setScoreSort(direction) {
 
 function flagsFor(item) {
   const bits = [];
-  if (item.is_freehold) bits.push("Freehold");
-  if (item.has_airspace) bits.push("Airspace");
-  if (item.has_sea_view) bits.push("Sea view");
-  if (item.is_shell_form) bits.push("Shell");
+  if (item.is_freehold) bits.push(t("flag.freehold"));
+  if (item.has_airspace) bits.push(t("flag.airspace"));
+  if (item.has_sea_view) bits.push(t("flag.seaView"));
+  if (item.is_shell_form) bits.push(t("flag.shell"));
   return bits;
 }
 
 function formatReady(value) {
-  if (value === true) return "Yes";
-  if (value === false) return "No";
-  return "?";
+  if (value === true) return t("yes");
+  if (value === false) return t("no");
+  return t("unknown");
 }
 
 function readySelectValue(value) {
@@ -244,14 +252,11 @@ function formatKm(value) {
   return `${Number.isInteger(n) ? n : n.toFixed(1)} km`;
 }
 
-function formatSeaProximity(value) {
+function formatSeaProximity(item) {
+  if (item?.sea_proximity_label) return item.sea_proximity_label;
+  const value = typeof item === "string" ? item : item?.sea_proximity;
   if (!value) return "—";
-  const labels = {
-    nad_morzem: "seafront",
-    blisko: "near sea",
-    daleko: "inland",
-  };
-  return labels[value] || String(value).replaceAll("_", " ");
+  return String(value).replaceAll("_", " ");
 }
 
 function formatAdjustment(value) {
@@ -267,18 +272,6 @@ function formatScore(value) {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
-const BREAKDOWN_LABELS = {
-  value_vs_market: "Value vs market",
-  location_quality: "Location",
-  property_fit: "Property fit",
-  finish_amenities: "Finish & amenities",
-  legal_safety: "Legal safety",
-  price_per_sqm: "Price/m²",
-  distance_to_gzira: "Distance to Gżira",
-  sea_proximity: "Sea proximity",
-  area_sqm: "Area",
-  structured_flags: "Property flags",
-};
 
 function formatBankValuation(bank) {
   if (!bank || typeof bank !== "object") return "";
@@ -290,27 +283,30 @@ function formatBankValuation(bank) {
       low != null && high != null
         ? ` (${euro(low)} – ${euro(high)})`
         : "";
-    rows.push(`<dt>Szacowana wartość</dt><dd>${euro(bank.estimated_value_eur)}${range}</dd>`);
+    rows.push(`<dt>${escapeHtml(t("bank.estimatedValue"))}</dt><dd>${euro(bank.estimated_value_eur)}${range}</dd>`);
   }
   if (bank.gap_pct != null) {
     const sign = Number(bank.gap_pct) > 0 ? "+" : "";
-    rows.push(`<dt>Luka ceny</dt><dd>${sign}${bank.gap_pct}%</dd>`);
+    rows.push(`<dt>${escapeHtml(t("bank.priceGap"))}</dt><dd>${sign}${bank.gap_pct}%</dd>`);
   }
-  if (bank.bank_risk) {
+  const riskLabel = bank.bank_risk_label || bank.bank_risk;
+  if (riskLabel) {
+    const riskCode = bank.bank_risk || "";
     const riskClass =
-      bank.bank_risk === "Wysokie"
+      riskCode === "high" || riskCode === "Wysokie"
         ? "risk-high"
-        : bank.bank_risk === "Średnie"
+        : riskCode === "medium" || riskCode === "Średnie"
           ? "risk-medium"
           : "risk-low";
-    rows.push(`<dt>Ryzyko bankowe</dt><dd class="${riskClass}">${escapeHtml(bank.bank_risk)}</dd>`);
+    rows.push(`<dt>${escapeHtml(t("bank.bankRisk"))}</dt><dd class="${riskClass}">${escapeHtml(riskLabel)}</dd>`);
   }
-  if (bank.confidence) {
-    rows.push(`<dt>Confidence</dt><dd>${escapeHtml(bank.confidence)}</dd>`);
+  const confLabel = bank.confidence_label || bank.confidence;
+  if (confLabel) {
+    rows.push(`<dt>${escapeHtml(t("bank.confidence"))}</dt><dd>${escapeHtml(confLabel)}</dd>`);
   }
   const rate = bank.components?.adjusted_rate_eur_per_sqm;
   if (rate != null) {
-    rows.push(`<dt>Stawka €/m²</dt><dd>${euro(rate)}</dd>`);
+    rows.push(`<dt>${escapeHtml(t("bank.rateSqm"))}</dt><dd>${euro(rate)}</dd>`);
   }
   return rows.length ? `<dl class="bank-val-grid">${rows.join("")}</dl>` : "";
 }
@@ -322,7 +318,7 @@ function renderScoreBreakdownRows(breakdown) {
   return entries
     .map(
       ([key, value]) =>
-        `<div class="score-tooltip-row"><span class="score-tooltip-label">${escapeHtml(BREAKDOWN_LABELS[key] || key)}</span><span class="score-tooltip-points">${escapeHtml(formatScore(value))}</span></div>`
+        `<div class="score-tooltip-row"><span class="score-tooltip-label">${escapeHtml(key)}</span><span class="score-tooltip-points">${escapeHtml(formatScore(value))}</span></div>`
     )
     .join("");
 }
@@ -335,7 +331,7 @@ function buildScoreTooltipContent(item) {
   const adj = item.qualitative_adjustment;
   const headerSub =
     base != null && adj != null
-      ? `base ${formatScore(base)} + LLM ${formatAdjustment(adj)}`
+      ? t("score.baseLlm", { base: formatScore(base), adj: formatAdjustment(adj) })
       : "";
 
   const breakdownHtml = renderScoreBreakdownRows(item.score_breakdown);
@@ -347,7 +343,7 @@ function buildScoreTooltipContent(item) {
   } else if (summary) {
     body += `<p class="score-tooltip-summary">${escapeHtml(summary)}</p>`;
   } else {
-    body += `<p class="score-tooltip-fallback">Open detail for full evaluation.</p>`;
+    body += `<p class="score-tooltip-fallback">${escapeHtml(t("score.tooltipFallback"))}</p>`;
   }
 
   if (breakdownHtml && summary) {
@@ -448,7 +444,7 @@ function formatDate(value) {
   if (value == null || value === "") return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat(intlLocale(), {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -492,7 +488,7 @@ function renderRows(items) {
   hideScoreTooltip();
   if (!items.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="${TABLE_COLS}"><div class="empty">No listings match these filters.<br/>Run the scrape → parse → db pipeline, then refresh.</div></td>`;
+    tr.innerHTML = `<td colspan="${TABLE_COLS}"><div class="empty">${escapeHtml(t("empty.listings"))}<br/>${escapeHtml(t("empty.pipeline"))}</div></td>`;
     els.body.appendChild(tr);
     return;
   }
@@ -506,32 +502,32 @@ function renderRows(items) {
       .map((f) => `<span class="flag">${f}</span>`)
       .join("");
     const notesText = typeof item.notes === "string" ? item.notes.trim() : "";
-    const newBadge = item.is_new ? `<span class="badge-new">New</span>` : "";
+    const newBadge = item.is_new ? `<span class="badge-new">${escapeHtml(t("badge.new"))}</span>` : "";
     const score = item.ai_score;
     const scoreCell = score == null
       ? `<td class="score-cell"><span class="score-missing">—</span></td>`
-      : `<td class="score-cell"><span class="score-badge-wrap" tabindex="0" aria-label="AI score details"><span class="score-badge ${scoreClass(score)}">${formatScore(score)}<span class="score-denom">/10</span></span></span></td>`;
+      : `<td class="score-cell"><span class="score-badge-wrap" tabindex="0" aria-label="${escapeHtml(t("score.tooltip"))}"><span class="score-badge ${scoreClass(score)}">${formatScore(score)}<span class="score-denom">/10</span></span></span></td>`;
     tr.innerHTML = `
       <td>
-        <div class="cell-title">${newBadge}${escapeHtml(item.title || "Untitled")}</div>
-        <span class="cell-meta">${flags || escapeHtml(item.property_type || "")}</span>
+        <div class="cell-title">${newBadge}${escapeHtml(item.title || t("untitled"))}</div>
+        <span class="cell-meta">${flags || escapeHtml(item.property_type_label || item.property_type || "")}</span>
       </td>
       ${scoreCell}
       <td>${escapeHtml(item.locality || "—")}</td>
       <td class="price">${formatKm(item.distance_to_gzira_km)}</td>
-      <td>${escapeHtml(formatSeaProximity(item.sea_proximity))}</td>
+      <td>${escapeHtml(formatSeaProximity(item))}</td>
       <td class="price">${euro(item.price_eur)}</td>
       <td class="price">${formatPricePerSqm(item.price_per_sqm)}</td>
       <td>${item.bedrooms ?? "—"}</td>
-      <td>${escapeHtml(item.source || "—")}</td>
+      <td>${escapeHtml(item.source_label || item.source || "—")}</td>
       <td class="ready-cell"><span class="ready-badge ${readyClass(item.ready)}">${formatReady(item.ready)}</span></td>
       <td class="fav-cell">
-        <button type="button" class="fav-btn ${item.is_fav ? "is-fav" : ""}" data-id="${item.id}" aria-label="Favorite" aria-pressed="${item.is_fav ? "true" : "false"}">${favIcon(item.is_fav)}</button>
+        <button type="button" class="fav-btn ${item.is_fav ? "is-fav" : ""}" data-id="${item.id}" aria-label="${escapeHtml(t("detail.favorite"))}" aria-pressed="${item.is_fav ? "true" : "false"}">${favIcon(item.is_fav)}</button>
       </td>
       <td class="hide-cell">
-        <label class="check hide-check" title="Hide">
+        <label class="check hide-check" title="${escapeHtml(t("table.hide"))}">
           <input type="checkbox" class="hide-toggle" data-id="${item.id}" ${item.is_hidden ? "checked" : ""} />
-          <span class="hide-label">Hide</span>
+          <span class="hide-label">${escapeHtml(t("table.hide"))}</span>
         </label>
       </td>
     `;
@@ -644,14 +640,14 @@ async function saveNotes(id, notes) {
   });
   if (!res.ok) {
     els.detailNotesStatus.hidden = false;
-    els.detailNotesStatus.textContent = "Could not save notes.";
+    els.detailNotesStatus.textContent = t("detail.notesSaveError");
     return false;
   }
   const listing = await res.json();
   updateNotesCell(id, listing.notes || "");
   els.detailNotes.value = listing.notes || "";
   els.detailNotesStatus.hidden = false;
-  els.detailNotesStatus.textContent = "Notes saved.";
+  els.detailNotesStatus.textContent = t("detail.notesSaved");
   return true;
 }
 
@@ -692,7 +688,7 @@ function clampOffset() {
 }
 
 async function loadListings({ syncUrl: shouldSyncUrl = false, push = false } = {}) {
-  els.count.textContent = "Loading…";
+  els.count.textContent = t("results.loading");
   const res = await fetch(`/api/listings?${buildQuery()}`);
   const data = await res.json();
   state.total = data.total || 0;
@@ -704,12 +700,13 @@ async function loadListings({ syncUrl: shouldSyncUrl = false, push = false } = {
   renderRows(data.items || []);
   const from = state.total === 0 ? 0 : state.offset + 1;
   const to = Math.min(state.offset + PAGE_SIZE, state.total);
-  els.count.textContent = `${state.total} match${state.total === 1 ? "" : "es"} · showing ${from}–${to}`;
+  const matchKey = state.total === 1 ? "results.matches" : "results.matchesPlural";
+  els.count.textContent = t(matchKey, { total: state.total, from, to });
 
   const pages = Math.max(1, Math.ceil(state.total / PAGE_SIZE));
   const page = Math.floor(state.offset / PAGE_SIZE) + 1;
   els.pager.hidden = state.total <= PAGE_SIZE;
-  els.pageLabel.textContent = `Page ${page} / ${pages}`;
+  els.pageLabel.textContent = t("pager.page", { page, pages });
   els.prev.disabled = state.offset <= 0;
   els.next.disabled = state.offset + PAGE_SIZE >= state.total;
   syncSortHeader();
@@ -722,7 +719,7 @@ function commitListings({ push = false } = {}) {
 async function openDetail(id) {
   hideScoreTooltip();
   const [listingRes, historyRes] = await Promise.all([
-    fetch(`/api/listings/${id}`),
+    fetch(`/api/listings/${id}?lang=${encodeURIComponent(getLocale())}`),
     fetch(`/api/listings/${id}/history`),
   ]);
   if (!listingRes.ok) return;
@@ -731,14 +728,14 @@ async function openDetail(id) {
   const history = historyPayload.items || [];
 
   document.getElementById("detail-kicker").textContent = [
-    listing.is_new ? "New" : null,
+    listing.is_new ? t("badge.new") : null,
     listing.locality,
-    listing.property_type,
-    listing.source,
+    listing.property_type_label || listing.property_type,
+    listing.source_label || listing.source,
   ]
     .filter(Boolean)
     .join(" · ");
-  document.getElementById("detail-title").textContent = listing.title || "Untitled";
+  document.getElementById("detail-title").textContent = listing.title || t("untitled");
   document.getElementById("detail-price").textContent = euro(listing.price_eur);
 
   const evalBlock = document.getElementById("detail-evaluation");
@@ -767,7 +764,7 @@ async function openDetail(id) {
     bankEl.hidden = !bankHtml;
     document.getElementById("detail-summary").textContent = listing.ai_summary || "";
     const warnings = [
-      ...(Array.isArray(listing.buyer_warnings_pl) ? listing.buyer_warnings_pl : []),
+      ...(Array.isArray(listing.buyer_warnings) ? listing.buyer_warnings : []),
       ...(Array.isArray(listing.bank_valuation?.sanity_flags)
         ? listing.bank_valuation.sanity_flags
         : []),
@@ -780,26 +777,26 @@ async function openDetail(id) {
     const pros = Array.isArray(listing.pros) ? listing.pros : [];
     const cons = Array.isArray(listing.cons) ? listing.cons : [];
     document.getElementById("detail-pros").innerHTML = pros.length
-      ? `<li class="eval-label">Pros</li>${pros.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}`
+      ? `<li class="eval-label">${escapeHtml(t("detail.pros"))}</li>${pros.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}`
       : "";
     document.getElementById("detail-cons").innerHTML = cons.length
-      ? `<li class="eval-label">Cons</li>${cons.map((c) => `<li>${escapeHtml(c)}</li>`).join("")}`
+      ? `<li class="eval-label">${escapeHtml(t("detail.cons"))}</li>${cons.map((c) => `<li>${escapeHtml(c)}</li>`).join("")}`
       : "";
   }
 
   const grid = document.getElementById("detail-grid");
   const fields = [
-    ["Bedrooms", listing.bedrooms ?? "—"],
-    ["Seller", listing.seller_type || "—"],
-    ["Distance to Gżira", formatKm(listing.distance_to_gzira_km)],
-    ["Sea proximity", formatSeaProximity(listing.sea_proximity)],
-    ["Freehold", listing.is_freehold ? "Yes" : "No"],
-    ["Airspace", listing.has_airspace ? "Yes" : "No"],
-    ["Sea view", listing.has_sea_view ? "Yes" : "No"],
-    ["Shell form", listing.is_shell_form ? "Yes" : "No"],
-    ["AI evaluated", formatDate(listing.ai_evaluated_at)],
-    ["Scraped", formatDate(listing.scraped_at)],
-    ["Updated", formatDate(listing.updated_at)],
+    [t("detail.bedrooms"), listing.bedrooms ?? "—"],
+    [t("detail.seller"), listing.seller_type_label || listing.seller_type || "—"],
+    [t("detail.distanceGzira"), formatKm(listing.distance_to_gzira_km)],
+    [t("detail.seaProximity"), formatSeaProximity(listing)],
+    [t("detail.freehold"), listing.is_freehold ? t("yes") : t("no")],
+    [t("detail.airspace"), listing.has_airspace ? t("yes") : t("no")],
+    [t("detail.seaView"), listing.has_sea_view ? t("yes") : t("no")],
+    [t("detail.shellForm"), listing.is_shell_form ? t("yes") : t("no")],
+    [t("detail.aiEvaluated"), formatDate(listing.ai_evaluated_at)],
+    [t("detail.scraped"), formatDate(listing.scraped_at)],
+    [t("detail.updated"), formatDate(listing.updated_at)],
   ];
   grid.innerHTML = fields
     .map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`)
@@ -819,7 +816,7 @@ async function openDetail(id) {
             `<li><span>${escapeHtml(formatDate(h.recorded_at))}</span><strong>${euro(h.price_eur)}</strong></li>`
         )
         .join("")
-    : "<li><span>No history yet</span><strong>—</strong></li>";
+    : `<li><span>${escapeHtml(t("detail.noHistory"))}</span><strong>—</strong></li>`;
 
   const link = document.getElementById("detail-url");
   link.href = listing.url || "#";
@@ -860,18 +857,11 @@ async function openDetail(id) {
   els.dialog.showModal();
 }
 
-const IMPORT_STEP_LABELS = {
-  queued: "Queued…",
-  detecting: "Detecting portal…",
-  extracting: "Extracting listing text…",
-  staging: "Saving to staging…",
-  parsing: "Parsing with Ollama…",
-  db: "Saving to database…",
-  evaluating: "AI investment evaluation…",
-  done: "Import complete",
-  failed: "Import failed",
-  skipped: "Skipped",
-};
+function importStepLabel(step) {
+  const key = `import.${step}`;
+  const translated = t(key);
+  return translated === key ? step : translated;
+}
 
 function setImportStatus(text, kind = "running") {
   els.importStatus.hidden = false;
@@ -895,12 +885,12 @@ function setImportBusy(busy) {
 async function pollImportJob(jobId) {
   const res = await fetch(`/api/jobs/${jobId}`);
   if (!res.ok) {
-    setImportStatus("Could not read import status.", "error");
+    setImportStatus(t("import.statusError"), "error");
     setImportBusy(false);
     return;
   }
   const job = await res.json();
-  const label = IMPORT_STEP_LABELS[job.step] || job.message || job.step;
+  const label = importStepLabel(job.step) || job.message || job.step;
   if (job.status === "queued" || job.status === "running") {
     setImportStatus(label, "running");
     setTimeout(() => pollImportJob(jobId), 1500);
@@ -908,17 +898,17 @@ async function pollImportJob(jobId) {
   }
   setImportBusy(false);
   if (job.status === "failed") {
-    setImportStatus(job.error || job.message || "Import failed", "error");
+    setImportStatus(job.error || job.message || t("import.failed"), "error");
     return;
   }
   if (job.status === "skipped") {
-    setImportStatus(job.message || "Listing skipped", "skipped");
+    setImportStatus(job.message || t("import.skipped"), "skipped");
     await loadStats();
     await loadListings();
     return;
   }
   setImportStatus(
-    job.source ? `Done — ${job.source}` : "Import complete",
+    job.source ? t("import.doneSource", { source: job.source }) : t("import.done"),
     "success",
   );
   await loadStats();
@@ -931,12 +921,12 @@ async function pollImportJob(jobId) {
 async function submitManualImport() {
   const html = els.importHtml.value.trim();
   if (!html) {
-    setImportStatus("Paste the page HTML first.", "error");
+    setImportStatus(t("import.pasteHtml"), "error");
     return;
   }
   const url = els.importUrl.value.trim();
   setImportBusy(true);
-  setImportStatus(IMPORT_STEP_LABELS.queued, "running");
+  setImportStatus(importStepLabel("queued"), "running");
   try {
     const res = await fetch("/api/manual-import", {
       method: "POST",
@@ -948,7 +938,7 @@ async function submitManualImport() {
     });
     const payload = await res.json();
     if (!res.ok) {
-      setImportStatus(payload.error || "Import request failed", "error");
+      setImportStatus(payload.error || t("import.requestFailed"), "error");
       setImportBusy(false);
       return;
     }
@@ -1039,6 +1029,14 @@ if (els.importDialog) {
 const initialUrlState = readUrlState();
 state.filters = initialUrlState.filters;
 state.offset = initialUrlState.offset;
+
+await initI18n();
+wireLangSwitcher();
+window.addEventListener("localechange", async () => {
+  applyTranslations();
+  await loadStats();
+  await loadListings();
+});
 
 await loadStats();
 applyStateToForm(initialUrlState.filters);

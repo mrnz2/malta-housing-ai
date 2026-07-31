@@ -97,7 +97,7 @@ def normalize_valuation_facts(
 
 
 def apply_area_heuristics(facts: dict[str, Any]) -> list[str]:
-    """Fill missing internal from total; return heuristic flags."""
+    """Fill missing internal from total; return sanity flag codes."""
     flags: list[str] = []
     internal = facts.get("internal_area_sqm")
     total = facts.get("total_area_sqm")
@@ -107,12 +107,12 @@ def apply_area_heuristics(facts: dict[str, Any]) -> list[str]:
             total_val = float(total)
             if 10 <= total_val <= 10_000:
                 facts["internal_area_sqm"] = int(round(total_val * TOTAL_TO_INTERNAL_RATIO))
-                flags.append("Internal oszacowany jako 85% total area (heurystyka)")
+                flags.append("area_heuristic")
         except (TypeError, ValueError):
             pass
 
     if facts.get("internal_area_sqm") is None:
-        flags.append("Brak metrażu internal — wycena niewiarygodna")
+        flags.append("missing_internal_area")
 
     return flags
 
@@ -226,12 +226,12 @@ def _bank_risk_label(
 ) -> str:
     rent_type = str(legal.get("ground_rent_type") or "").lower()
     if legal.get("has_ground_rent") and rent_type == "temporary":
-        return "Wysokie"
+        return "high"
     if price_ratio > SANITY_RATIO_HIGH or gap_pct > 15:
-        return "Wysokie"
+        return "high"
     if confidence == "low" or gap_pct > 5:
-        return "Średnie"
-    return "Niskie"
+        return "medium"
+    return "low"
 
 
 def compute_bank_valuation(
@@ -340,13 +340,11 @@ def compute_bank_valuation(
         price_ratio < SANITY_RATIO_LOW or price_ratio > SANITY_RATIO_HIGH
     ):
         confidence = "low"
-        sanity_flags.append(
-            "Metraż prawdopodobnie zawiera błąd lub cena dotyczy udziału/garażu/osobnej części"
-        )
+        sanity_flags.append("price_area_mismatch")
     if "internal_area_sqm" in missing_inputs or internal_sqm is None:
         confidence = "low"
     if garage.get("optional_extra_price"):
-        sanity_flags.append("Garaż opcjonalny za dopłatą — nie wliczony w wycenę mieszkania")
+        sanity_flags.append("optional_garage_excluded")
 
     bank_risk = _bank_risk_label(
         gap_pct or 0.0,

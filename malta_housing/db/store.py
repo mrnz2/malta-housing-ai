@@ -11,8 +11,29 @@ from malta_housing.budget import MAX_PRICE_EUR, MIN_PRICE_EUR, is_out_of_budget
 from malta_housing.common import PARSED_PATH, load_json_list, purge_hidden_from_json, resolve_source
 from malta_housing.distances import distance_to_gzira_km, sea_proximity_for
 from malta_housing.geo import is_gozo_record
+from malta_housing.i18n.property_types import normalize_property_type
 from malta_housing.models import utc_now_iso
 from malta_housing.paths import DB_PATH, ensure_data_dir
+
+_LISTINGS_I18N_COLUMNS = (
+    ("title_en", "TEXT"),
+    ("title_pl", "TEXT"),
+    ("key_features_en", "TEXT"),
+    ("key_features_pl", "TEXT"),
+    ("ai_summary_en", "TEXT"),
+    ("ai_summary_pl", "TEXT"),
+)
+
+_EVALUATIONS_I18N_COLUMNS = (
+    ("ai_summary_en", "TEXT"),
+    ("ai_summary_pl", "TEXT"),
+    ("pros_en", "TEXT"),
+    ("pros_pl", "TEXT"),
+    ("cons_en", "TEXT"),
+    ("cons_pl", "TEXT"),
+    ("buyer_warnings_en", "TEXT"),
+    ("buyer_warnings_pl", "TEXT"),
+)
 
 
 def _connect(db_name: str | Path = DB_PATH) -> sqlite3.Connection:
@@ -111,11 +132,119 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
         "CREATE INDEX IF NOT EXISTS idx_evaluations_score ON evaluations(ai_score DESC)"
     )
 
+    for column, col_def in _LISTINGS_I18N_COLUMNS:
+        _ensure_column(cursor, "listings", column, col_def)
+    for column, col_def in _EVALUATIONS_I18N_COLUMNS:
+        _ensure_column(cursor, "evaluations", column, col_def)
+
     conn.commit()
     _backfill_locality_fields(conn)
     _backfill_sources(conn)
     _backfill_listing_scores(conn)
+    _backfill_bilingual_columns(conn)
+    _backfill_property_type_codes(conn)
     conn.close()
+
+
+def _backfill_property_type_codes(conn: sqlite3.Connection) -> None:
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT id, property_type FROM listings WHERE property_type IS NOT NULL"
+        )
+        rows = cursor.fetchall()
+    except sqlite3.OperationalError:
+        return
+    updated = 0
+    for row in rows:
+        normalized = normalize_property_type(row["property_type"])
+        if normalized and normalized != row["property_type"]:
+            cursor.execute(
+                "UPDATE listings SET property_type = ? WHERE id = ?",
+                (normalized, row["id"]),
+            )
+            updated += 1
+    if updated:
+        conn.commit()
+        print(f"🏷️ Znormalizowano property_type dla {updated} ofert.")
+
+
+def _json_list_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value if value.strip() else None
+    if isinstance(value, list):
+        if not value:
+            return None
+        return json.dumps(value, ensure_ascii=False)
+    return None
+
+
+def _backfill_bilingual_columns(conn: sqlite3.Connection) -> None:
+    """Copy legacy single-language columns into *_en where bilingual columns are empty."""
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            UPDATE listings SET
+                title_en = title
+            WHERE (title_en IS NULL OR TRIM(title_en) = '')
+              AND title IS NOT NULL AND TRIM(title) != ''
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE listings SET
+                key_features_en = key_features
+            WHERE (key_features_en IS NULL OR TRIM(key_features_en) = '')
+              AND key_features IS NOT NULL AND TRIM(key_features) != ''
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE listings SET
+                ai_summary_en = ai_summary
+            WHERE (ai_summary_en IS NULL OR TRIM(ai_summary_en) = '')
+              AND ai_summary IS NOT NULL AND TRIM(ai_summary) != ''
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE evaluations SET
+                ai_summary_en = ai_summary
+            WHERE (ai_summary_en IS NULL OR TRIM(ai_summary_en) = '')
+              AND ai_summary IS NOT NULL AND TRIM(ai_summary) != ''
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE evaluations SET
+                pros_en = pros
+            WHERE (pros_en IS NULL OR TRIM(pros_en) = '')
+              AND pros IS NOT NULL AND TRIM(pros) != ''
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE evaluations SET
+                cons_en = cons
+            WHERE (cons_en IS NULL OR TRIM(cons_en) = '')
+              AND cons IS NOT NULL AND TRIM(cons) != ''
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE evaluations
+            SET buyer_warnings_pl = json_extract(evaluation_json, '$.buyer_warnings_pl')
+            WHERE (buyer_warnings_pl IS NULL OR TRIM(buyer_warnings_pl) = '')
+              AND evaluation_json IS NOT NULL
+              AND json_extract(evaluation_json, '$.buyer_warnings_pl') IS NOT NULL
+            """
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
 
 
 def _backfill_sources(conn: sqlite3.Connection) -> int:
@@ -354,7 +483,8 @@ def clear_evaluations(db_name: str | Path = DB_PATH) -> dict[str, int]:
     cursor.execute(
         """
         UPDATE listings
-        SET ai_score = NULL, ai_summary = NULL, ai_evaluated_at = NULL
+        SET ai_score = NULL, ai_summary = NULL, ai_summary_en = NULL, ai_summary_pl = NULL,
+            ai_evaluated_at = NULL
         """
     )
     conn.commit()
@@ -468,9 +598,15 @@ def save_listings_to_db(
         if existing is not None and existing["is_hidden"]:
             skipped_hidden += 1
             continue
-        key_features = item.get("key_features", [])
-        if not isinstance(key_features, str):
-            key_features = json.dumps(key_features, ensure_ascii=False)
+        key_features_en = _json_list_text(
+            item.get("key_features_en") or item.get("key_features")
+        )
+        key_features_pl = _json_list_text(item.get("key_features_pl"))
+        title_en = item.get("title_en") or item.get("title")
+        title_pl = item.get("title_pl")
+        property_type = normalize_property_type(item.get("property_type")) or item.get(
+            "property_type"
+        )
 
         distance_km = item.get("distance_to_gzira_km")
         if distance_km is None:
@@ -487,10 +623,11 @@ def save_listings_to_db(
             ready = bool(ready)
 
         values = (
-            item.get("title"),
+            title_en,
+            title_pl,
             item.get("price_eur"),
             item.get("locality"),
-            item.get("property_type"),
+            property_type,
             item.get("bedrooms"),
             item.get("seller_type"),
             item.get("is_freehold", False),
@@ -498,12 +635,14 @@ def save_listings_to_db(
             item.get("has_sea_view", False),
             item.get("is_shell_form", False),
             ready,
-            key_features,
+            key_features_en,
+            key_features_pl,
             source,
             item.get("scraped_at"),
             item.get("updated_at") or now,
             distance_km,
             sea_proximity,
+            title_en,
             url,
         )
 
@@ -511,11 +650,13 @@ def save_listings_to_db(
             cursor.execute(
                 """
                 INSERT INTO listings (
-                    title, price_eur, locality, property_type,
+                    title, title_en, title_pl, price_eur, locality, property_type,
                     bedrooms, seller_type, is_freehold, has_airspace,
-                    has_sea_view, is_shell_form, ready, key_features, source,
-                    scraped_at, updated_at, distance_to_gzira_km, sea_proximity, url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    has_sea_view, is_shell_form, ready,
+                    key_features, key_features_en, key_features_pl,
+                    source, scraped_at, updated_at,
+                    distance_to_gzira_km, sea_proximity, url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 values,
             )
@@ -545,6 +686,8 @@ def save_listings_to_db(
                 """
                 UPDATE listings SET
                     title = ?,
+                    title_en = ?,
+                    title_pl = ?,
                     price_eur = ?,
                     locality = ?,
                     property_type = ?,
@@ -556,6 +699,8 @@ def save_listings_to_db(
                     is_shell_form = ?,
                     ready = ?,
                     key_features = ?,
+                    key_features_en = ?,
+                    key_features_pl = ?,
                     source = COALESCE(?, NULLIF(TRIM(source), '')),
                     scraped_at = COALESCE(?, scraped_at),
                     updated_at = ?,
@@ -629,13 +774,26 @@ def save_evaluation(
     if url in get_hidden_urls(db_name):
         return
     score = evaluation["investment_score"]
-    summary = evaluation.get("summary", "")
-    pros = evaluation.get("pros", [])
-    cons = evaluation.get("cons", [])
-    if not isinstance(pros, str):
-        pros = json.dumps(pros, ensure_ascii=False)
-    if not isinstance(cons, str):
-        cons = json.dumps(cons, ensure_ascii=False)
+    summary_en = evaluation.get("summary_en") or evaluation.get("summary", "")
+    summary_pl = evaluation.get("summary_pl") or ""
+    pros_en = evaluation.get("pros_en") or evaluation.get("pros", [])
+    pros_pl = evaluation.get("pros_pl") or []
+    cons_en = evaluation.get("cons_en") or evaluation.get("cons", [])
+    cons_pl = evaluation.get("cons_pl") or []
+    warnings_en = evaluation.get("buyer_warnings_en") or []
+    warnings_pl = (
+        evaluation.get("buyer_warnings_pl")
+        or evaluation.get("buyer_warnings")
+        or []
+    )
+
+    pros_en_json = _json_list_text(pros_en) or "[]"
+    pros_pl_json = _json_list_text(pros_pl) or "[]"
+    cons_en_json = _json_list_text(cons_en) or "[]"
+    cons_pl_json = _json_list_text(cons_pl) or "[]"
+    warnings_en_json = _json_list_text(warnings_en) or "[]"
+    warnings_pl_json = _json_list_text(warnings_pl) or "[]"
+
     payload = json.dumps(evaluation, ensure_ascii=False)
     now = utc_now_iso()
 
@@ -643,25 +801,55 @@ def save_evaluation(
     cursor = conn.cursor()
     cursor.execute(
         """
-        INSERT INTO evaluations (url, ai_score, ai_summary, pros, cons, evaluation_json, evaluated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO evaluations (
+            url, ai_score, ai_summary, ai_summary_en, ai_summary_pl,
+            pros, pros_en, pros_pl, cons, cons_en, cons_pl,
+            buyer_warnings_en, buyer_warnings_pl,
+            evaluation_json, evaluated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(url) DO UPDATE SET
             ai_score = excluded.ai_score,
             ai_summary = excluded.ai_summary,
+            ai_summary_en = excluded.ai_summary_en,
+            ai_summary_pl = excluded.ai_summary_pl,
             pros = excluded.pros,
+            pros_en = excluded.pros_en,
+            pros_pl = excluded.pros_pl,
             cons = excluded.cons,
+            cons_en = excluded.cons_en,
+            cons_pl = excluded.cons_pl,
+            buyer_warnings_en = excluded.buyer_warnings_en,
+            buyer_warnings_pl = excluded.buyer_warnings_pl,
             evaluation_json = excluded.evaluation_json,
             evaluated_at = excluded.evaluated_at
         """,
-        (url, score, summary, pros, cons, payload, now),
+        (
+            url,
+            score,
+            summary_en,
+            summary_en,
+            summary_pl,
+            pros_en_json,
+            pros_en_json,
+            pros_pl_json,
+            cons_en_json,
+            cons_en_json,
+            cons_pl_json,
+            warnings_en_json,
+            warnings_pl_json,
+            payload,
+            now,
+        ),
     )
     cursor.execute(
         """
         UPDATE listings
-        SET ai_score = ?, ai_summary = ?, ai_evaluated_at = ?
+        SET ai_score = ?, ai_summary = ?, ai_summary_en = ?, ai_summary_pl = ?,
+            ai_evaluated_at = ?
         WHERE url = ?
         """,
-        (score, summary, now, url),
+        (score, summary_en, summary_en, summary_pl, now, url),
     )
     conn.commit()
     conn.close()

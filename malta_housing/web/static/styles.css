@@ -53,6 +53,18 @@ body {
   animation: rise 0.55s ease both;
 }
 
+.lang-switch {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.lang-switch .btn.is-active {
+  background: var(--sea-deep);
+  color: #fff;
+  border-color: var(--sea-deep);
+}
+
 .brand {
   margin: 0;
   font-family: var(--font-display);
