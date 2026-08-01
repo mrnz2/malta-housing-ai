@@ -2,6 +2,7 @@ import { applyTranslations, getLocale, initI18n, intlLocale, t, wireLangSwitcher
 
 const PAGE_SIZE = 50;
 const DEFAULT_SORT = "ai_score_desc";
+const HOLD_HIDE_MS = 1000;
 const FILTER_KEYS = [
   "q",
   "locality",
@@ -73,7 +74,7 @@ const els = {
   editReady: document.getElementById("edit-ready"),
   detailCloseBtn: document.getElementById("detail-close"),
   detailFav: document.getElementById("detail-fav"),
-  detailHidden: document.getElementById("detail-hidden"),
+  detailHidden: document.getElementById("detail-hidden-btn"),
   detailNotes: document.getElementById("detail-notes"),
   detailNotesSave: document.getElementById("detail-notes-save"),
   detailNotesStatus: document.getElementById("detail-notes-status"),
@@ -798,10 +799,7 @@ function renderRows(items) {
         <button type="button" class="fav-btn ${item.is_fav ? "is-fav" : ""}" data-id="${item.id}" aria-label="${escapeHtml(t("detail.favorite"))}" aria-pressed="${item.is_fav ? "true" : "false"}">${favIcon(item.is_fav)}</button>
       </td>
       <td class="hide-cell">
-        <label class="check hide-check" title="${escapeHtml(t("table.hide"))}">
-          <input type="checkbox" class="hide-toggle" data-id="${item.id}" ${item.is_hidden ? "checked" : ""} />
-          <span class="hide-label">${escapeHtml(t("table.hide"))}</span>
-        </label>
+        ${holdHideButtonHtml({ compact: true, listingId: item.id, isHidden: item.is_hidden })}
       </td>
     `;
     tr.addEventListener("click", () => openDetail(item.id));
@@ -811,19 +809,21 @@ function renderRows(items) {
         openDetail(item.id);
       }
     });
-    const hideToggle = tr.querySelector(".hide-toggle");
-    const hideCheck = tr.querySelector(".hide-check");
+    const hideBtn = tr.querySelector(".hold-hide-btn");
     const favBtn = tr.querySelector(".fav-btn");
     const scoreWrap = tr.querySelector(".score-badge-wrap");
     if (scoreWrap) wireScoreTooltip(scoreWrap, item);
-    hideCheck.addEventListener("click", (e) => e.stopPropagation());
+    wireHoldHideButton(hideBtn, {
+      listingId: item.id,
+      isHidden: item.is_hidden,
+      onChange: async (hidden) => {
+        await setHidden(item.id, hidden);
+      },
+    });
     favBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       const current = favBtn.classList.contains("is-fav");
       setFav(item.id, !current);
-    });
-    hideToggle.addEventListener("change", () => {
-      setHidden(item.id, hideToggle.checked);
     });
     els.body.appendChild(tr);
     if (notesText) {
@@ -860,6 +860,85 @@ function updateFavCell(id, fav) {
   syncFavButton(btn, fav);
 }
 
+function holdHideButtonHtml({ compact = false, listingId, isHidden = false } = {}) {
+  const hidden = Boolean(isHidden);
+  const label = hidden ? t("hide.unhide") : t("table.hide");
+  const title = hidden ? t("hide.unhide") : t("hide.holdHint");
+  const cls = compact ? "hold-hide-btn hold-hide-btn--compact" : "hold-hide-btn";
+  return `<button type="button" class="${cls}" data-id="${listingId ?? ""}" data-hidden="${hidden ? "true" : "false"}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+    <span class="hold-hide-btn__fill" aria-hidden="true"></span>
+    <span class="hold-hide-btn__label">${escapeHtml(label)}</span>
+  </button>`;
+}
+
+function syncHoldHideButton(btn, isHidden) {
+  if (!btn) return;
+  const hidden = Boolean(isHidden);
+  btn.dataset.hidden = hidden ? "true" : "false";
+  btn.classList.toggle("is-unhide", hidden);
+  btn.classList.remove("is-holding");
+  const fill = btn.querySelector(".hold-hide-btn__fill");
+  if (fill) fill.style.width = "0%";
+  const label = btn.querySelector(".hold-hide-btn__label");
+  if (label) label.textContent = hidden ? t("hide.unhide") : t("table.hide");
+  const title = hidden ? t("hide.unhide") : t("hide.holdHint");
+  btn.title = title;
+  btn.setAttribute("aria-label", title);
+}
+
+function wireHoldHideButton(btn, { listingId, isHidden, onChange }) {
+  if (!btn) return;
+  syncHoldHideButton(btn, isHidden);
+  if (listingId != null) btn.dataset.id = String(listingId);
+  btn._holdOnChange = onChange;
+  if (btn.dataset.holdWired === "1") return;
+  btn.dataset.holdWired = "1";
+
+  let holdTimer = null;
+
+  const cancelHold = () => {
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+    btn.classList.remove("is-holding");
+    const fill = btn.querySelector(".hold-hide-btn__fill");
+    if (fill) fill.style.width = "0%";
+  };
+
+  const startHold = (e) => {
+    e.stopPropagation();
+    if (btn.dataset.hidden === "true") return;
+    if (e.button != null && e.button !== 0) return;
+    cancelHold();
+    btn.classList.add("is-holding");
+    const fill = btn.querySelector(".hold-hide-btn__fill");
+    if (fill) fill.style.width = "100%";
+    holdTimer = window.setTimeout(async () => {
+      holdTimer = null;
+      btn.classList.remove("is-holding");
+      if (fill) fill.style.width = "0%";
+      await btn._holdOnChange?.(true);
+    }, HOLD_HIDE_MS);
+  };
+
+  const endHold = (e) => {
+    if (btn.dataset.hidden === "true") return;
+    if (e?.type === "pointerup" && e.button != null && e.button !== 0) return;
+    cancelHold();
+  };
+
+  btn.addEventListener("pointerdown", startHold);
+  btn.addEventListener("pointerup", endHold);
+  btn.addEventListener("pointercancel", endHold);
+  btn.addEventListener("pointerleave", endHold);
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (btn.dataset.hidden !== "true") return;
+    await btn._holdOnChange?.(false);
+  });
+}
+
 async function setHidden(id, hidden) {
   const res = await fetch(`/api/listings/${id}/hidden`, {
     method: "POST",
@@ -881,6 +960,11 @@ async function setHidden(id, hidden) {
     row.classList.toggle("is-hidden-row", Boolean(hidden));
     const notesRow = els.body.querySelector(`tr.notes-row[data-notes-for="${id}"]`);
     if (notesRow) notesRow.classList.toggle("is-hidden-row", Boolean(hidden));
+    const hideBtn = row.querySelector(".hold-hide-btn");
+    syncHoldHideButton(hideBtn, hidden);
+  }
+  if (els.detailHidden && els.dialog.open && Number(els.dialog.dataset.listingId) === id) {
+    syncHoldHideButton(els.detailHidden, hidden);
   }
 }
 
@@ -1362,20 +1446,24 @@ async function openDetail(id, { push = true } = {}) {
     if (actualFav != null) listing.is_fav = actualFav;
   };
 
-  els.detailHidden.checked = Boolean(listing.is_hidden);
+  wireHoldHideButton(els.detailHidden, {
+    listingId: listing.id,
+    isHidden: listing.is_hidden,
+    onChange: async (hidden) => {
+      await setHidden(listing.id, hidden);
+      listing.is_hidden = hidden;
+      if (
+        (hidden && !state.filters.show_hidden) ||
+        (!hidden && state.filters.show_hidden)
+      ) {
+        closeDetail();
+      }
+    },
+  });
   els.detailReady.value = readySelectValue(listing.ready);
   els.detailReady.onchange = async () => {
     const updated = await setReady(listing.id, readyFromSelect(els.detailReady.value));
     if (updated) listing.ready = updated.ready;
-  };
-  els.detailHidden.onchange = async () => {
-    await setHidden(listing.id, els.detailHidden.checked);
-    if (
-      (els.detailHidden.checked && !state.filters.show_hidden) ||
-      (!els.detailHidden.checked && state.filters.show_hidden)
-    ) {
-      closeDetail();
-    }
   };
 
   els.detailNotes.value = listing.notes || "";

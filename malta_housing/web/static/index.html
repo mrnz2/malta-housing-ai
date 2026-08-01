@@ -191,9 +191,10 @@
         <ul class="detail-cons" id="detail-cons"></ul>
       </section>
       <div class="detail-actions-row">
-        <label class="check detail-hide">
-          <input type="checkbox" id="detail-hidden" /> <span data-i18n="detail.hide">Hide</span>
-        </label>
+        <button type="button" class="hold-hide-btn" id="detail-hidden-btn" data-i18n-title="hide.holdHint" title="Hold for 1 second to hide">
+          <span class="hold-hide-btn__fill" aria-hidden="true"></span>
+          <span class="hold-hide-btn__label" data-i18n="detail.hide">Hide</span>
+        </button>
         <label class="field detail-ready-field">
           <span data-i18n="detail.ready">Ready to move in</span>
           <select id="detail-ready">

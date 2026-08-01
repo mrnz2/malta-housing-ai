@@ -50,6 +50,8 @@
   "table.ready": "Gotowe",
   "table.fav": "Ulub.",
   "table.hide": "Ukryj",
+  "hide.holdHint": "Przytrzymaj 1 sekundę, aby ukryć",
+  "hide.unhide": "Pokaż",
   "pager.prev": "Poprzednia",
   "pager.next": "Następna",
   "pager.page": "Strona {page} / {pages}",

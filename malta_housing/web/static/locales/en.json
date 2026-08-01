@@ -50,6 +50,8 @@
   "table.ready": "Ready",
   "table.fav": "Fav",
   "table.hide": "Hide",
+  "hide.holdHint": "Hold for 1 second to hide",
+  "hide.unhide": "Unhide",
   "pager.prev": "Previous",
   "pager.next": "Next",
   "pager.page": "Page {page} / {pages}",

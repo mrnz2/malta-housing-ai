@@ -445,15 +445,6 @@ body.filters-open {
   padding: 0.15rem 0.35rem;
 }
 
-.hide-check {
-  cursor: pointer;
-}
-
-.hide-label {
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-}
-
 .detail-actions-row {
   display: flex;
   flex-wrap: wrap;
@@ -462,10 +453,62 @@ body.filters-open {
   margin: 0 0 0.65rem;
 }
 
-.detail-hide {
-  margin: 0;
-  font-size: 0.88rem;
+.hold-hide-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font: 600 0.82rem/1 var(--font-body);
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: border-color 0.15s ease, color 0.15s ease;
   flex-shrink: 0;
+}
+
+.hold-hide-btn--compact {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.55rem;
+}
+
+.hold-hide-btn:hover {
+  border-color: var(--sea);
+  color: var(--sea-deep);
+}
+
+.hold-hide-btn.is-holding {
+  border-color: var(--sea);
+  color: var(--sea-deep);
+}
+
+.hold-hide-btn.is-unhide {
+  border-color: rgba(10, 107, 120, 0.35);
+}
+
+.hold-hide-btn__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: rgba(10, 107, 120, 0.22);
+  pointer-events: none;
+  transition: width 0s linear;
+}
+
+.hold-hide-btn.is-holding .hold-hide-btn__fill {
+  width: 100%;
+  transition: width 1s linear;
+}
+
+.hold-hide-btn__label {
+  position: relative;
+  z-index: 1;
+  white-space: nowrap;
 }
 
 .detail-ready-field {
