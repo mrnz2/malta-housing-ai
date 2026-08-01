@@ -24,6 +24,7 @@ from malta_housing.db.store import (
     update_listing_editable,
 )
 from malta_housing.i18n.localize import normalize_locale
+from malta_housing.i18n.translate import run_translate
 from malta_housing.manual_import import run_manual_pipeline
 from malta_housing.paths import DB_PATH, PACKAGE_ROOT
 
@@ -239,6 +240,7 @@ class BrowseHandler(BaseHTTPRequestHandler):
     def _do_post(self) -> None:
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
+        qs = parse_qs(parsed.query)
 
         if path == "/api/manual-import":
             length = int(self.headers.get("Content-Length") or 0)
@@ -389,6 +391,53 @@ class BrowseHandler(BaseHTTPRequestHandler):
                 return
             listing = queries.get_listing(listing_id, locale=locale)
             self._send(*_json_bytes(listing or {"id": listing_id}))
+            return
+
+        match_translate = re.fullmatch(r"/api/listings/(\d+)/translate", path)
+        if match_translate:
+            listing_id = int(match_translate.group(1))
+            listing = queries.get_listing(listing_id)
+            if listing is None:
+                self._send(*_json_bytes({"error": "Listing not found"}, 404))
+                return
+            locale = _parse_locale(qs, self.headers.get("Accept-Language"))
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                body = json.loads(raw.decode("utf-8") or "{}")
+            except json.JSONDecodeError:
+                self._send(*_json_bytes({"error": "Invalid JSON"}, 400))
+                return
+            force = bool(body.get("force", True))
+            stats = run_translate(
+                force=force,
+                url=listing["url"],
+            )
+            if stats.get("failed", 0) > 0:
+                self._send(
+                    *_json_bytes(
+                        {
+                            "error": "Translation failed",
+                            "stats": stats,
+                        },
+                        500,
+                    )
+                )
+                return
+            updated = queries.get_listing(listing_id, locale=locale)
+            self._send(
+                *_json_bytes(
+                    {
+                        "listing": updated,
+                        "stats": stats,
+                        "message": (
+                            "nothing_to_translate"
+                            if stats.get("ok", 0) == 0
+                            else "ok"
+                        ),
+                    }
+                )
+            )
             return
 
         self._send(*_json_bytes({"error": "Not found"}, 404))

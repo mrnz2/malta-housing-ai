@@ -77,6 +77,8 @@ python -m malta_housing db
 python -m malta_housing run --source <portal> --pages 3   # scrape→parse→db→rank (one portal)
 python -m malta_housing rank --top 10 --max-price 300000  # AI investment ranking
 python -m malta_housing serve          # http://127.0.0.1:8765
+python -m malta_housing translate    # EN→PL via Ollama (no re-scrape)
+python -m malta_housing normalize-titles  # title casing backfill (no LLM)
 python -m malta_housing purge-gozo
 python -m malta_housing purge-budget
 ```

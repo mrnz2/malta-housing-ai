@@ -25,6 +25,7 @@ from malta_housing.scrapers.simonmamo import run_simonmamo_scraper
 from malta_housing.scrapers.yitaku import run_yitaku_scraper
 from malta_housing.analysis.ranker import run_rank
 from malta_housing.i18n.translate import run_translate
+from malta_housing.parsing.text_normalize import run_normalize_titles
 from malta_housing.web.server import run_server
 
 
@@ -84,15 +85,22 @@ def cmd_rank(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_normalize_titles(_args: argparse.Namespace) -> None:
+    run_normalize_titles()
+
+
 def cmd_translate(args: argparse.Namespace) -> None:
     listings = not args.evaluations_only
     evaluations = not args.listings_only
-    run_translate(
-        force=args.force,
-        listings=listings,
-        evaluations=evaluations,
-        url=args.url,
-    )
+    try:
+        run_translate(
+            force=args.force,
+            listings=listings,
+            evaluations=evaluations,
+            url=args.url,
+        )
+    except KeyboardInterrupt:
+        print("\n⏹ Translation interrupted.")
 
 
 def cmd_purge_gozo(_args: argparse.Namespace) -> None:
@@ -329,6 +337,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Translate a single listing by URL",
     )
     p_translate.set_defaults(func=cmd_translate)
+
+    p_normalize_titles = sub.add_parser(
+        "normalize-titles",
+        help="Normalize title casing (no LLM) for visible listings in DB and parsed JSON",
+    )
+    p_normalize_titles.set_defaults(func=cmd_normalize_titles)
 
     return parser
 

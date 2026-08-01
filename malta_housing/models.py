@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from malta_housing.distances import SeaProximity
 from malta_housing.i18n.property_types import normalize_property_type
+from malta_housing.parsing.text_normalize import normalize_display_text, normalize_locality_text
 
 SellerType = Literal["OWNER", "AGENT", "SENSAR", "UNKNOWN"]
 SourceType = Literal[
@@ -114,6 +115,20 @@ class MaltaPropertySchema(BaseModel):
             return v
         return str(v).strip()
 
+    @field_validator("title", "title_en", "title_pl", mode="after")
+    @classmethod
+    def normalize_title_text(cls, v):
+        if v is None or not str(v).strip():
+            return v
+        return normalize_display_text(str(v))
+
+    @field_validator("locality", mode="after")
+    @classmethod
+    def normalize_locality_field(cls, v):
+        if v is None or not str(v).strip():
+            return v
+        return normalize_locality_text(str(v))
+
     @field_validator("property_type", mode="before")
     @classmethod
     def normalize_property_type_field(cls, v):
@@ -172,6 +187,16 @@ class MaltaPropertySchema(BaseModel):
         if normalized in {"OWNER", "AGENT", "SENSAR", "UNKNOWN"}:
             return normalized
         return "UNKNOWN"
+
+    @field_validator("key_features", "key_features_en", "key_features_pl", mode="after")
+    @classmethod
+    def normalize_key_features_text(cls, v):
+        if not v:
+            return v
+        return [
+            normalize_display_text(str(item)) if item and str(item).strip() else item
+            for item in v
+        ]
 
     @field_validator("key_features", "key_features_en", "key_features_pl", mode="before")
     @classmethod

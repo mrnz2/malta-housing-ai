@@ -30,8 +30,58 @@
   </header>
 
   <main class="layout">
-    <aside class="filters" data-i18n-aria="filters.label">
-      <form id="filter-form">
+    <section class="results" aria-live="polite">
+      <div class="results-bar">
+        <div class="results-bar-head">
+          <div class="filters-toggle-wrap">
+            <button type="button" class="btn icon-btn filters-toggle-btn" id="filters-open" data-i18n-aria="filters.label" aria-label="Filters" aria-expanded="false" aria-controls="filters-panel">
+              <svg class="filters-toggle-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <path d="M4 6h16M7 12h10M10 18h4" />
+              </svg>
+            </button>
+            <span class="filters-active-label" id="filters-active-label" hidden></span>
+          </div>
+          <h1 class="results-title" data-i18n="results.title">Listings</h1>
+          <button type="button" class="btn icon-btn" id="import-open" data-i18n-aria="results.import" aria-label="Import listing HTML">+</button>
+        </div>
+        <p class="results-count" id="results-count" data-i18n="results.loading">Loading…</p>
+      </div>
+      <div class="table-wrap">
+        <table class="listings-table">
+          <thead>
+            <tr>
+              <th data-i18n="table.title">Title</th>
+              <th class="sortable-th" id="sort-score" data-sort="ai_score" data-i18n-title="table.score" title="Sort by AI score" data-i18n="table.score">Score</th>
+              <th data-i18n="table.locality">Locality</th>
+              <th data-i18n="table.gzira">→ Gżira</th>
+              <th data-i18n="table.sea">Sea</th>
+              <th data-i18n="table.price">Price</th>
+              <th data-i18n="table.priceSqm">€/m2</th>
+              <th data-i18n="table.beds">Beds</th>
+              <th data-i18n="table.source">Source</th>
+              <th data-i18n="table.ready">Ready</th>
+              <th data-i18n="table.fav">Fav</th>
+              <th data-i18n="table.hide">Hide</th>
+            </tr>
+          </thead>
+          <tbody id="listings-body"></tbody>
+        </table>
+      </div>
+      <div class="pager" id="pager" hidden>
+        <button type="button" class="btn ghost" id="prev-page" data-i18n="pager.prev">Previous</button>
+        <span id="page-label"></span>
+        <button type="button" class="btn ghost" id="next-page" data-i18n="pager.next">Next</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="filters-backdrop" id="filters-backdrop" hidden></div>
+  <aside class="filters filters-drawer" id="filters-panel" aria-hidden="true" data-i18n-aria="filters.label">
+    <div class="filters-drawer-head">
+      <p class="filters-drawer-title" data-i18n="filters.label">Filters</p>
+      <button type="button" class="btn ghost modal-close-btn" id="filters-close" data-i18n-aria="detail.close" aria-label="Close">×</button>
+    </div>
+    <form id="filter-form">
         <label class="field">
           <span data-i18n="filters.search">Search</span>
           <input type="search" name="q" data-i18n-placeholder="filters.searchPlaceholder" placeholder="Title, town, URL…" autocomplete="off" />
@@ -105,44 +155,7 @@
           <button type="reset" class="btn ghost" data-i18n="filters.reset">Reset</button>
         </div>
       </form>
-    </aside>
-
-    <section class="results" aria-live="polite">
-      <div class="results-bar">
-        <div class="results-bar-head">
-          <h1 class="results-title" data-i18n="results.title">Listings</h1>
-          <button type="button" class="btn icon-btn" id="import-open" data-i18n-aria="results.import" aria-label="Import listing HTML">+</button>
-        </div>
-        <p class="results-count" id="results-count" data-i18n="results.loading">Loading…</p>
-      </div>
-      <div class="table-wrap">
-        <table class="listings-table">
-          <thead>
-            <tr>
-              <th data-i18n="table.title">Title</th>
-              <th class="sortable-th" id="sort-score" data-sort="ai_score" data-i18n-title="table.score" title="Sort by AI score" data-i18n="table.score">Score</th>
-              <th data-i18n="table.locality">Locality</th>
-              <th data-i18n="table.gzira">→ Gżira</th>
-              <th data-i18n="table.sea">Sea</th>
-              <th data-i18n="table.price">Price</th>
-              <th data-i18n="table.priceSqm">€/m2</th>
-              <th data-i18n="table.beds">Beds</th>
-              <th data-i18n="table.source">Source</th>
-              <th data-i18n="table.ready">Ready</th>
-              <th data-i18n="table.fav">Fav</th>
-              <th data-i18n="table.hide">Hide</th>
-            </tr>
-          </thead>
-          <tbody id="listings-body"></tbody>
-        </table>
-      </div>
-      <div class="pager" id="pager" hidden>
-        <button type="button" class="btn ghost" id="prev-page" data-i18n="pager.prev">Previous</button>
-        <span id="page-label"></span>
-        <button type="button" class="btn ghost" id="next-page" data-i18n="pager.next">Next</button>
-      </div>
-    </section>
-  </main>
+  </aside>
 
   <dialog id="detail-dialog" class="detail-dialog">
     <div class="detail-inner">
@@ -156,6 +169,7 @@
         </div>
         <div class="detail-head-actions">
           <button type="button" class="fav-btn" id="detail-fav" data-i18n-aria="detail.favorite" aria-label="Favorite" aria-pressed="false">♡</button>
+          <button type="button" class="btn ghost" id="detail-translate" data-i18n="detail.translate">Translate</button>
           <button type="button" class="btn ghost" id="detail-edit-open" data-i18n="detail.edit">Edit</button>
           <button type="button" class="btn ghost detail-edit-only" id="detail-edit-cancel" data-i18n="detail.cancel" hidden>Cancel</button>
           <button type="button" class="btn primary detail-edit-only" id="detail-edit-save" data-i18n="detail.save" hidden>Save</button>

@@ -13,7 +13,7 @@ from malta_housing.db.store import _connect, get_hidden_urls, init_db
 from malta_housing.i18n.localize import _coerce_json_list
 from malta_housing.paths import DB_PATH
 
-MODEL_NAME = "qwen2.5:7b"
+MODEL_NAME = "SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0"
 LLM_RETRIES = 3
 OLLAMA_TIMEOUT_S = 120.0
 
@@ -167,7 +167,22 @@ INPUT:
 _STRING_PL_KEYS = frozenset({"title_pl", "summary_pl"})
 
 
-def _normalize_output(data: dict[str, Any], expected_keys: set[str]) -> dict[str, Any]:
+def _coerce_translated_list(value: Any, expected_count: int | None = None) -> list[str]:
+    """Parse list fields from LLM JSON; Bielik often returns comma-separated strings."""
+    items = _coerce_json_list(value)
+    if items:
+        return items
+    if isinstance(value, str) and value.strip():
+        text = value.strip()
+        if expected_count == 1:
+            return [text]
+        parts = [part.strip() for part in text.split(",") if part.strip()]
+        if parts:
+            return parts
+    return []
+
+
+def _normalize_output(data: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     mapping = {
         "title_en": "title_pl",
@@ -178,7 +193,7 @@ def _normalize_output(data: dict[str, Any], expected_keys: set[str]) -> dict[str
         "buyer_warnings_en": "buyer_warnings_pl",
     }
     for en_key, pl_key in mapping.items():
-        if en_key not in expected_keys:
+        if en_key not in payload:
             continue
         if pl_key not in data:
             raise ValueError(f"missing {pl_key}")
@@ -189,7 +204,9 @@ def _normalize_output(data: dict[str, Any], expected_keys: set[str]) -> dict[str
                 raise ValueError(f"empty {pl_key}")
             out[pl_key] = text
         else:
-            items = _coerce_json_list(value)
+            en_items = _coerce_json_list(payload.get(en_key))
+            expected_count = len(en_items) if en_items else None
+            items = _coerce_translated_list(value, expected_count)
             if not items and en_key != "buyer_warnings_en":
                 raise ValueError(f"empty {pl_key}")
             out[pl_key] = items
@@ -198,7 +215,6 @@ def _normalize_output(data: dict[str, Any], expected_keys: set[str]) -> dict[str
 
 def _call_ollama(payload: dict[str, Any]) -> dict[str, Any]:
     prompt = _build_prompt(payload)
-    expected = set(payload.keys())
     last_error: Exception | None = None
     for attempt in range(1, LLM_RETRIES + 1):
         try:
@@ -210,7 +226,7 @@ def _call_ollama(payload: dict[str, Any]) -> dict[str, Any]:
             parsed = json.loads(response["message"]["content"])
             if not isinstance(parsed, dict):
                 raise ValueError(f"expected JSON object, got {type(parsed).__name__}")
-            return _normalize_output(parsed, expected)
+            return _normalize_output(parsed, payload)
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             last_error = exc
             print(f"   └─ Translation attempt {attempt}/{LLM_RETRIES} failed: {exc}")
@@ -377,47 +393,72 @@ def run_translate(
 
     ok = 0
     failed = 0
+    interrupted = False
     started = time.perf_counter()
 
     for i, row in enumerate(to_process, 1):
         listing_url = row["url"]
         label = _en_title(row) or listing_url
         print(f"[{i}/{len(to_process)}] Translating: {label[:80]}...")
-        chunks = _translate_payloads(row, listings=listings, evaluations=evaluations)
-        if not chunks:
-            print("   └─ Skipped: no English text to translate.")
-            continue
-        merged: dict[str, Any] = {}
-        chunk_errors: list[str] = []
-        for chunk in chunks:
-            try:
-                merged.update(_call_ollama(chunk))
-            except Exception as exc:
-                chunk_errors.append(str(exc))
-                print(f"   └─ Chunk failed ({', '.join(chunk.keys())}): {exc}")
-        if not merged:
-            failed += 1
-            print(f"   └─ Error: all chunks failed")
-            continue
         try:
-            _save_translation_result(
-                listing_url,
-                merged,
-                has_evaluation=bool(row.get("eval_url")),
-                db_name=db_name,
-            )
-            ok += 1
-            if chunk_errors:
-                print(f"   └─ Partial OK ({len(chunk_errors)} chunk(s) failed)")
-            else:
-                print("   └─ OK")
-        except Exception as exc:
-            failed += 1
-            print(f"   └─ Error saving: {exc}")
+            chunks = _translate_payloads(row, listings=listings, evaluations=evaluations)
+            if not chunks:
+                print("   └─ Skipped: no English text to translate.")
+                continue
+            merged: dict[str, Any] = {}
+            chunk_errors: list[str] = []
+            for chunk in chunks:
+                try:
+                    merged.update(_call_ollama(chunk))
+                except KeyboardInterrupt:
+                    raise
+                except Exception as exc:
+                    chunk_errors.append(str(exc))
+                    print(f"   └─ Chunk failed ({', '.join(chunk.keys())}): {exc}")
+            if not merged:
+                failed += 1
+                print("   └─ Error: all chunks failed")
+                continue
+            try:
+                _save_translation_result(
+                    listing_url,
+                    merged,
+                    has_evaluation=bool(row.get("eval_url")),
+                    db_name=db_name,
+                )
+                ok += 1
+                if chunk_errors:
+                    print(f"   └─ Partial OK ({len(chunk_errors)} chunk(s) failed)")
+                else:
+                    print("   └─ OK")
+            except Exception as exc:
+                failed += 1
+                print(f"   └─ Error saving: {exc}")
+        except KeyboardInterrupt:
+            interrupted = True
+            print(f"\n⏹ Interrupted at [{i}/{len(to_process)}].")
+            break
 
     elapsed = time.perf_counter() - started
-    print(
-        f"\n✅ Translation done: {ok} ok, {failed} failed, "
-        f"{len(rows) - len(to_process)} skipped, {elapsed:.0f}s."
-    )
-    return {"ok": ok, "failed": failed, "skipped": len(rows) - len(to_process)}
+    remaining = len(to_process) - ok - failed if interrupted else 0
+    if interrupted:
+        print(
+            f"\n⏹ Translation stopped: {ok} ok, {failed} failed, "
+            f"{remaining} not processed, {len(rows) - len(to_process)} skipped, {elapsed:.0f}s."
+        )
+        if not force:
+            print("   Re-run the same command (without --force) to continue.")
+        else:
+            print("   Re-run to continue; use without --force to skip already translated fields.")
+    else:
+        print(
+            f"\n✅ Translation done: {ok} ok, {failed} failed, "
+            f"{len(rows) - len(to_process)} skipped, {elapsed:.0f}s."
+        )
+    return {
+        "ok": ok,
+        "failed": failed,
+        "skipped": len(rows) - len(to_process),
+        "interrupted": interrupted,
+        "remaining": remaining,
+    }

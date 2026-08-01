@@ -47,6 +47,7 @@ const els = {
   dialog: document.getElementById("detail-dialog"),
   detailView: document.getElementById("detail-view"),
   detailEdit: document.getElementById("detail-edit-form"),
+  detailTranslateBtn: document.getElementById("detail-translate"),
   detailEditBtn: document.getElementById("detail-edit-open"),
   detailEditSave: document.getElementById("detail-edit-save"),
   detailEditCancel: document.getElementById("detail-edit-cancel"),
@@ -85,6 +86,11 @@ const els = {
   importHtml: document.getElementById("import-html"),
   importSubmit: document.getElementById("import-submit"),
   importStatus: document.getElementById("import-status"),
+  filtersPanel: document.getElementById("filters-panel"),
+  filtersBackdrop: document.getElementById("filters-backdrop"),
+  filtersOpen: document.getElementById("filters-open"),
+  filtersClose: document.getElementById("filters-close"),
+  filtersActiveLabel: document.getElementById("filters-active-label"),
 };
 
 function euro(value) {
@@ -122,6 +128,59 @@ function fillSelect(select, values, blankLabel = null) {
   if ([...select.options].some((o) => o.value === current)) {
     select.value = current;
   }
+}
+
+function countActiveFilters(filters = state.filters) {
+  let count = 0;
+  for (const key of FILTER_KEYS) {
+    if (key === "sort") {
+      if (filters.sort && filters.sort !== DEFAULT_SORT) count += 1;
+      continue;
+    }
+    if (filters[key]) count += 1;
+  }
+  return count;
+}
+
+function syncFiltersToggleBadge() {
+  if (!els.filtersActiveLabel) return;
+  const active = countActiveFilters() > 0;
+  if (active) {
+    els.filtersActiveLabel.textContent = t("filters.active");
+    els.filtersActiveLabel.hidden = false;
+  } else {
+    els.filtersActiveLabel.textContent = "";
+    els.filtersActiveLabel.hidden = true;
+  }
+}
+
+function isFiltersOpen() {
+  return els.filtersPanel?.classList.contains("is-open");
+}
+
+function openFilters() {
+  if (!els.filtersPanel) return;
+  els.filtersPanel.classList.add("is-open");
+  els.filtersPanel.setAttribute("aria-hidden", "false");
+  els.filtersBackdrop?.classList.add("is-open");
+  els.filtersBackdrop?.removeAttribute("hidden");
+  els.filtersOpen?.setAttribute("aria-expanded", "true");
+  document.body.classList.add("filters-open");
+}
+
+function closeFilters() {
+  if (!els.filtersPanel) return;
+  els.filtersPanel.classList.remove("is-open");
+  els.filtersPanel.setAttribute("aria-hidden", "true");
+  els.filtersBackdrop?.classList.remove("is-open");
+  els.filtersBackdrop?.setAttribute("hidden", "");
+  els.filtersOpen?.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("filters-open");
+}
+
+function toggleFilters() {
+  if (isFiltersOpen()) closeFilters();
+  else openFilters();
 }
 
 function readFilters() {
@@ -924,6 +983,7 @@ async function loadListings({ syncUrl: shouldSyncUrl = false, push = false } = {
   els.prev.disabled = state.offset <= 0;
   els.next.disabled = state.offset + PAGE_SIZE >= state.total;
   syncSortHeader();
+  syncFiltersToggleBadge();
 }
 
 function commitListings({ push = false } = {}) {
@@ -1036,9 +1096,64 @@ function syncDetailEditChrome() {
   const editing = detailEditMode;
   if (els.detailView) els.detailView.hidden = editing;
   if (els.detailEdit) els.detailEdit.hidden = !editing;
+  if (els.detailTranslateBtn) els.detailTranslateBtn.hidden = editing;
   if (els.detailEditBtn) els.detailEditBtn.hidden = editing;
   if (els.detailEditSave) els.detailEditSave.hidden = !editing;
   if (els.detailEditCancel) els.detailEditCancel.hidden = !editing;
+}
+
+function setDetailTranslateBusy(busy) {
+  if (!els.detailTranslateBtn) return;
+  els.detailTranslateBtn.disabled = busy;
+  if (busy) {
+    els.detailTranslateBtn.textContent = t("detail.translating");
+  } else {
+    els.detailTranslateBtn.textContent = t("detail.translate");
+  }
+}
+
+async function translateDetailListing() {
+  if (!currentDetailListing || detailEditMode) return;
+  const id = currentDetailListing.id;
+  setDetailTranslateBusy(true);
+  if (els.detailNotesStatus) {
+    els.detailNotesStatus.hidden = true;
+    els.detailNotesStatus.textContent = "";
+  }
+  try {
+    const res = await fetch(
+      `/api/listings/${id}/translate?lang=${encodeURIComponent(getLocale())}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true }),
+      },
+    );
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (els.detailNotesStatus) {
+        els.detailNotesStatus.hidden = false;
+        els.detailNotesStatus.textContent = payload.error || t("detail.translateError");
+      }
+      return;
+    }
+    const messageKey =
+      payload.message === "nothing_to_translate"
+        ? "detail.translateNothing"
+        : "detail.translateOk";
+    await openDetail(id, { push: false });
+    if (els.detailNotesStatus) {
+      els.detailNotesStatus.hidden = false;
+      els.detailNotesStatus.textContent = t(messageKey);
+    }
+  } catch {
+    if (els.detailNotesStatus) {
+      els.detailNotesStatus.hidden = false;
+      els.detailNotesStatus.textContent = t("detail.translateError");
+    }
+  } finally {
+    setDetailTranslateBusy(false);
+  }
 }
 
 function populateEditForm(listing) {
@@ -1387,6 +1502,7 @@ els.form.addEventListener("submit", (e) => {
   state.filters = readFilters();
   state.offset = 0;
   commitListings({ push: true });
+  closeFilters();
 });
 
 els.form.addEventListener("reset", () => {
@@ -1394,7 +1510,24 @@ els.form.addEventListener("reset", () => {
     state.filters = { sort: DEFAULT_SORT };
     state.offset = 0;
     commitListings({ push: true });
+    syncFiltersToggleBadge();
   }, 0);
+});
+
+if (els.filtersOpen) {
+  els.filtersOpen.addEventListener("click", () => toggleFilters());
+}
+if (els.filtersClose) {
+  els.filtersClose.addEventListener("click", () => closeFilters());
+}
+if (els.filtersBackdrop) {
+  els.filtersBackdrop.addEventListener("click", () => closeFilters());
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && isFiltersOpen()) {
+    e.preventDefault();
+    closeFilters();
+  }
 });
 
 if (els.sortScore) {
@@ -1437,6 +1570,9 @@ window.addEventListener("popstate", async () => {
 });
 
 els.detailCloseBtn?.addEventListener("click", () => closeDetail());
+if (els.detailTranslateBtn) {
+  els.detailTranslateBtn.addEventListener("click", () => translateDetailListing());
+}
 if (els.detailEditBtn) {
   els.detailEditBtn.addEventListener("click", () => enterDetailEdit());
 }
@@ -1492,6 +1628,7 @@ wireLangSwitcher();
 syncDetailEditChrome();
 window.addEventListener("localechange", async () => {
   applyTranslations();
+  syncFiltersToggleBadge();
   await loadStats();
   await loadListings();
   if (detailEditMode && currentDetailListing) {
@@ -1506,6 +1643,7 @@ window.addEventListener("localechange", async () => {
 
 await loadStats();
 applyStateToForm(initialUrlState.filters);
+syncFiltersToggleBadge();
 syncUrl();
 await loadListings();
 

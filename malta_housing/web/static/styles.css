@@ -96,16 +96,10 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) 1fr;
+  grid-template-columns: 1fr;
   gap: 1.25rem;
   padding: 0 clamp(1.25rem, 3vw, 2.5rem) 2.5rem;
   align-items: start;
-}
-
-@media (max-width: 860px) {
-  .layout {
-    grid-template-columns: 1fr;
-  }
 }
 
 .filters,
@@ -119,9 +113,92 @@ body {
 
 .filters {
   padding: 1.1rem 1.15rem 1.25rem;
-  animation: rise 0.65s ease 0.05s both;
-  position: sticky;
-  top: 1rem;
+}
+
+.filters-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 210;
+  width: min(280px, 92vw);
+  max-height: 100vh;
+  overflow-y: auto;
+  transform: translateX(-105%);
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  animation: none;
+}
+
+.filters-drawer.is-open {
+  transform: translateX(0);
+}
+
+.filters-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.filters-drawer-title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+}
+
+.filters-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(21, 32, 40, 0.28);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.filters-backdrop.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+body.filters-open {
+  overflow: hidden;
+}
+
+.filters-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.filters-toggle-btn {
+  flex-shrink: 0;
+}
+
+.filters-toggle-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.filters-active-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #c62828;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.filters-active-label[hidden] {
+  display: none !important;
 }
 
 .field {
@@ -242,6 +319,9 @@ body {
 }
 
 .icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-width: 2rem;
   width: 2rem;
   height: 2rem;
