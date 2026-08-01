@@ -1,6 +1,6 @@
 # Malta Housing AI
 
-An automated pipeline for scraping, processing, analyzing, and storing real estate listings in Malta. It uses a modular Python package combined with a local Large Language Model (**Qwen 2.5 7B** via **Ollama**) for unstructured data extraction, plus a **hybrid investment scorer** (deterministic Python rubric + LLM qualitative adjustment), storing structured results in a SQLite database.
+An automated pipeline for scraping, processing, analyzing, and storing real estate listings in Malta. It uses a modular Python package combined with local LLMs via **Ollama**: **Qwen 2.5 7B** for unstructured data extraction and investment scoring, plus **Bielik 4.5B** for EN→PL translation in the browser. A **hybrid investment scorer** (deterministic Python rubric + LLM qualitative adjustment) stores structured results in SQLite.
 
 > **For AI assistants / new chats:** start with [`AGENTS.md`](AGENTS.md) (also loaded via `.cursor/rules/`).
 
@@ -54,11 +54,16 @@ An automated pipeline for scraping, processing, analyzing, and storing real esta
              │ ai_score synced to listings + evaluations table
              ▼
 ┌─────────────────────────┐
-│  web/                   │ -> local browser (scores, filters, sort)
+│  web/                   │ -> local browser (scores, filters, sort, PL/EN)
+└────────────┬────────────┘
+             │ optional EN→PL backfill
+             ▼
+┌─────────────────────────┐
+│  i18n/translate.py      │ -> Ollama (Bielik 4.5B) — title, features, AI text
 └─────────────────────────┘
 ```
 
-Orchestration: `python -m malta_housing` (`run` / `scrape` / `parse` / `db` / `rank` / `init-db` / `serve` / `purge-gozo` / `purge-budget` / `purge-scores`).
+Orchestration: `python -m malta_housing` (`run` / `scrape` / `parse` / `db` / `rank` / `translate` / `init-db` / `serve` / `purge-gozo` / `purge-budget` / `purge-scores`).
 
 Windows one-shot for **all** portals: `.\run_all.ps1` (scrape each source → parse → db → rank new listings).
 
@@ -93,6 +98,8 @@ malta-housing-ai/
 │   ├── db/
 │   │   ├── store.py         # UPSERT + price_history + evaluations
 │   │   └── queries.py       # read API for the browser
+│   ├── i18n/
+│   │   └── translate.py     # EN→PL via Ollama (Bielik)
 │   └── web/
 │       ├── server.py        # local HTTP server (stdlib)
 │       └── static/          # HTML / CSS / JS UI
@@ -117,7 +124,8 @@ malta-housing-ai/
 * `malta_housing/analysis/ranker.py`: Fetches DB candidates, evaluates unevaluated listings, prints ranked console report with score breakdown.
 * `malta_housing/db/store.py`: UPSERTs into `data/malta_properties.db`; logs price changes in `price_history`; persists AI evaluations.
 * `malta_housing/db/queries.py`: Read API for the browser (filtering, sorting by `ai_score`, stats).
-* `malta_housing/web/`: Local browser UI — filter/search listings, AI score column, sea proximity, sort by score, detail view with base/LLM breakdown, pros/cons.
+* `malta_housing/i18n/translate.py`: EN→PL translation via Ollama Bielik; fills `*_pl` columns without re-scrape.
+* `malta_housing/web/`: Local browser UI — filter/search listings, AI score column, sea proximity, sort by score, detail view with base/LLM breakdown, pros/cons, PL/EN toggle.
 * `setup.ps1`: Windows PowerShell install (venv + pinned deps + `init-db` only).
 * `run_all.ps1`: Windows PowerShell — all scrapers in sequence, then parse, db, and rank (`--new-only`).
 
@@ -180,10 +188,11 @@ On each `rank` evaluation, both `evaluations` and `listings` are updated. Previo
 
 * Python 3.10+
 * Git
-* Ollama installed locally with the Qwen 2.5 7B model:
+* Ollama installed locally with two models:
 
 ```bash
-ollama pull qwen2.5:7b
+ollama pull qwen2.5:7b                                              # parse + rank
+ollama pull SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0               # EN→PL translate
 ```
 
 ### Setup
@@ -206,7 +215,7 @@ python -m malta_housing init-db
 
 ### Running the pipeline
 
-Ensure Ollama is running before `parse` or `rank`.
+Ensure Ollama is running before `parse`, `rank`, or `translate`.
 
 **All portals (Windows, recommended):**
 
@@ -289,6 +298,20 @@ The command:
 
 Tune thresholds in `malta_housing/analysis/scoring.py`. After changing the rubric, run `purge-scores` then `rank` (or `rank --force`) to refresh cached scores.
 
+### Polish translation (Bielik)
+
+After listings are in the database (and optionally ranked), translate English text fields to Polish without re-scraping:
+
+```bash
+python -m malta_housing translate
+python -m malta_housing translate --force              # re-translate filled PL columns
+python -m malta_housing translate --listings-only      # title + key_features only
+python -m malta_housing translate --evaluations-only   # AI summary, pros, cons, warnings
+python -m malta_housing translate --url "https://..."  # single listing
+```
+
+Uses **`SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0`** via Ollama (`malta_housing/i18n/translate.py`). Writes `title_pl`, `key_features_pl`, `ai_summary_pl`, and evaluation `*_pl` columns. Skips rows that already have Polish text unless `--force`. The web UI can also trigger per-listing translation (PL locale + **Translate** button in the detail panel).
+
 **Evaluation JSON shape:**
 
 ```json
@@ -329,7 +352,8 @@ The browser shows:
 * **Score** column per listing (`ai_score` / 10, or `—` if not evaluated)
 * **Sea** column — proximity category from `to_gzira.csv` (nad morzem / blisko / daleko)
 * Default sort: **AI score ↓** (click the Score header to toggle direction)
-* Detail panel: final score with base + LLM breakdown, component scores, summary, pros, cons, price history
+* **PL / EN** language toggle; detail panel shows localized title, features, and AI text when `*_pl` columns are filled
+* Detail panel: final score with base + LLM breakdown, component scores, summary, pros, cons, price history; **Translate** button runs Bielik on demand
 * Header stats: total listings, average price, scored count, average score
 
 No extra dependencies — stdlib HTTP server + static HTML/JS reading `data/malta_properties.db`.
@@ -359,6 +383,8 @@ ORDER BY ai_score DESC;
 | `db` | UPSERT parsed JSON into SQLite |
 | `run --source <portal> --pages N [--force] [--skip-rank]` | scrape → parse → db → rank |
 | `rank --top N [--max-price EUR] [--force]` | Hybrid AI investment ranking (Python base + Ollama adjustment) |
+| `translate [--force] [--listings-only \| --evaluations-only] [--url URL]` | EN→PL via Bielik (no re-scrape) |
+| `normalize-titles` | Fix title casing in DB + parsed JSON (no LLM) |
 | `serve [--host HOST] [--port PORT]` | Local listings browser |
 | `purge-gozo` | Remove Gozo listings from DB + JSON |
 | `purge-budget` | Remove listings outside €100k–€400k |

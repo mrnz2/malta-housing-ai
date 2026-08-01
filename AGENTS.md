@@ -4,7 +4,7 @@ Onboarding for AI coding agents. Read this before changing code in a new chat.
 
 ## What this project is
 
-Personal pipeline: scrape Malta property portals → stage JSON → parse with local Ollama (Qwen 2.5 7B) → UPSERT SQLite → optional **hybrid** AI investment ranking (Python base score + LLM adjustment) → optional local HTML browser.
+Personal pipeline: scrape Malta property portals → stage JSON → parse with local Ollama (Qwen 2.5 7B) → UPSERT SQLite → optional **hybrid** AI investment ranking (Python base score + LLM adjustment) → optional EN→PL translation (Bielik 4.5B) → optional local HTML browser.
 
 **Do not invent a flat `scraper.py` / `parser.py` / `database.py` layout.** That legacy shape is gone. Everything lives under `malta_housing/`.
 
@@ -33,6 +33,7 @@ scrapers/*.py  →  data/scraped_listings.json  →  parsing/llm.py
 | Budget band | `malta_housing/budget.py` (€100k–€400k) |
 | Gżira / sea proximity | `malta_housing/distances.py` + `to_gzira.csv` |
 | Gozo filter | `malta_housing/geo.py` |
+| EN→PL translation | `malta_housing/i18n/translate.py` (`run_translate`) |
 
 ## Sources (complete list)
 
@@ -77,7 +78,7 @@ python -m malta_housing db
 python -m malta_housing run --source <portal> --pages 3   # scrape→parse→db→rank (one portal)
 python -m malta_housing rank --top 10 --max-price 300000  # AI investment ranking
 python -m malta_housing serve          # http://127.0.0.1:8765
-python -m malta_housing translate    # EN→PL via Ollama (no re-scrape)
+python -m malta_housing translate    # EN→PL via Bielik (no re-scrape)
 python -m malta_housing normalize-titles  # title casing backfill (no LLM)
 python -m malta_housing purge-gozo
 python -m malta_housing purge-budget
@@ -86,6 +87,13 @@ python -m malta_housing purge-budget
 Windows all-portals: `.\run_all.ps1 -Pages 3` (`-Force` → parse `--force`).
 
 Use project venv: `venv\Scripts\python.exe` (Windows).
+
+## Polish translation (Bielik)
+
+* Model: `SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0` via Ollama (`i18n/translate.py`)
+* Fills `title_pl`, `key_features_pl`, `ai_summary_pl`, and evaluation `pros_pl` / `cons_pl` / `buyer_warnings_pl` from existing English columns
+* Skips already-translated fields unless `--force`; `--listings-only` / `--evaluations-only` / `--url` supported
+* Web UI: `POST /api/listings/{id}/translate` + PL locale in `web/static/`
 
 ## AI evaluation (hybrid + bank valuation)
 
@@ -129,3 +137,4 @@ Use project venv: `venv\Scripts\python.exe` (Windows).
 * `malta_housing/analysis/scoring.py` — deterministic base score rubric (bank-aligned)
 * `malta_housing/analysis/evaluator.py` — hybrid scorer (base + LLM adjustment)
 * `malta_housing/analysis/ranker.py` — batch rank CLI logic
+* `malta_housing/i18n/translate.py` — Bielik EN→PL translation CLI + web API
