@@ -186,7 +186,8 @@ class BrowseHandler(BaseHTTPRequestHandler):
         if path == "/api/listings":
             payload = queries.list_listings(
                 q=(qs.get("q") or [None])[0] or None,
-                locality=(qs.get("locality") or [None])[0] or None,
+                locality=[v for v in (qs.get("locality") or []) if v and str(v).strip()]
+                or None,
                 source=(qs.get("source") or [None])[0] or None,
                 seller_type=(qs.get("seller_type") or [None])[0] or None,
                 property_type=(qs.get("property_type") or [None])[0] or None,

@@ -39,7 +39,7 @@
                 <path d="M4 6h16M7 12h10M10 18h4" />
               </svg>
             </button>
-            <span class="filters-active-label" id="filters-active-label" hidden></span>
+            <button type="button" class="filters-active-label" id="filters-active-label" data-i18n="filters.active" data-i18n-aria="filters.activeReset" hidden></button>
           </div>
           <h1 class="results-title" data-i18n="results.title">Listings</h1>
           <button type="button" class="btn icon-btn" id="import-open" data-i18n-aria="results.import" aria-label="Import listing HTML">+</button>
@@ -89,9 +89,8 @@
 
         <label class="field">
           <span data-i18n="filters.locality">Locality</span>
-          <select name="locality" id="filter-locality">
-            <option value="" data-i18n="filters.all">All</option>
-          </select>
+          <span class="field-hint" data-i18n="filters.localityHint">Ctrl+click to select multiple</span>
+          <select name="locality" id="filter-locality" multiple size="6"></select>
         </label>
 
         <label class="field">

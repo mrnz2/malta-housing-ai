@@ -189,16 +189,43 @@ body.filters-open {
 }
 
 .filters-active-label {
-  font-size: 0.72rem;
-  font-weight: 700;
-  line-height: 1;
+  appearance: none;
+  border: 1px solid rgba(198, 40, 40, 0.45);
+  background: rgba(198, 40, 40, 0.08);
+  border-radius: 999px;
+  padding: 0.38rem 0.72rem;
+  font: 700 0.84rem/1 var(--font-body);
   color: #c62828;
   letter-spacing: 0.02em;
   white-space: nowrap;
+  cursor: pointer;
+  animation: filters-active-pulse 2.2s ease-in-out infinite;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.filters-active-label:hover {
+  background: rgba(198, 40, 40, 0.16);
+  border-color: #c62828;
+}
+
+.filters-active-label:active {
+  transform: scale(0.97);
 }
 
 .filters-active-label[hidden] {
   display: none !important;
+}
+
+@keyframes filters-active-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(198, 40, 40, 0);
+  }
+  50% {
+    opacity: 0.72;
+    box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.18);
+  }
 }
 
 .field {
@@ -225,6 +252,30 @@ body.filters-open {
   padding: 0.55rem 0.7rem;
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.field .field-hint {
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ink-soft);
+  margin-top: -0.15rem;
+}
+
+.field select[multiple] {
+  min-height: 8.5rem;
+  padding: 0.35rem 0.45rem;
+}
+
+.field select[multiple] option {
+  padding: 0.25rem 0.35rem;
+  border-radius: 6px;
+}
+
+.field select[multiple] option:checked {
+  background: linear-gradient(0deg, rgba(10, 107, 120, 0.18), rgba(10, 107, 120, 0.18));
+  color: var(--ink);
 }
 
 .field input:focus,

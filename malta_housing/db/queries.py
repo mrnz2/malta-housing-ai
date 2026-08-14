@@ -357,7 +357,7 @@ def get_stats(db_name: str | Path = DB_PATH, *, locale: str = "en") -> dict[str,
 def list_listings(
     *,
     q: str | None = None,
-    locality: str | None = None,
+    locality: str | list[str] | None = None,
     source: str | None = None,
     seller_type: str | None = None,
     property_type: str | None = None,
@@ -393,8 +393,11 @@ def list_listings(
         like = f"%{q}%"
         params.extend([like, like, like, like, like])
     if locality:
-        where.append("listings.locality = ?")
-        params.append(locality)
+        localities = [locality] if isinstance(locality, str) else [v for v in locality if v]
+        if localities:
+            placeholders = ",".join("?" * len(localities))
+            where.append(f"listings.locality IN ({placeholders})")
+            params.extend(localities)
     if source:
         where.append("listings.source = ?")
         params.append(source)

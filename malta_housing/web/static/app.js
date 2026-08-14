@@ -17,6 +17,7 @@ const FILTER_KEYS = [
   "fav_only",
   "sort",
 ];
+const MULTI_FILTER_KEYS = new Set(["locality"]);
 
 const state = {
   offset: 0,
@@ -109,12 +110,17 @@ function formatPricePerSqm(value) {
 }
 
 function fillSelect(select, values, blankLabel = null) {
-  const current = select.value;
+  const isMultiple = select.multiple;
+  const current = isMultiple
+    ? [...select.selectedOptions].map((o) => o.value)
+    : select.value;
   select.innerHTML = "";
-  const blank = document.createElement("option");
-  blank.value = "";
-  blank.textContent = blankLabel ?? t("filters.all");
-  select.appendChild(blank);
+  if (!isMultiple) {
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = blankLabel ?? t("filters.all");
+    select.appendChild(blank);
+  }
   for (const value of values) {
     const opt = document.createElement("option");
     if (value && typeof value === "object" && "code" in value) {
@@ -126,9 +132,36 @@ function fillSelect(select, values, blankLabel = null) {
     }
     select.appendChild(opt);
   }
-  if ([...select.options].some((o) => o.value === current)) {
+  if (isMultiple) {
+    for (const opt of select.options) {
+      opt.selected = current.includes(opt.value);
+    }
+  } else if ([...select.options].some((o) => o.value === current)) {
     select.value = current;
   }
+}
+
+function appendFilterParams(params, filters) {
+  for (const key of FILTER_KEYS) {
+    const value = filters[key];
+    if (value == null) continue;
+    if (key === "sort" && value === DEFAULT_SORT) continue;
+    if (MULTI_FILTER_KEYS.has(key)) {
+      const values = Array.isArray(value) ? value : [value];
+      for (const item of values) {
+        const trimmed = String(item).trim();
+        if (trimmed) params.append(key, trimmed);
+      }
+      continue;
+    }
+    const trimmed = String(value).trim();
+    if (trimmed) params.set(key, trimmed);
+  }
+}
+
+function filterValueActive(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  return Boolean(value);
 }
 
 function countActiveFilters(filters = state.filters) {
@@ -138,7 +171,7 @@ function countActiveFilters(filters = state.filters) {
       if (filters.sort && filters.sort !== DEFAULT_SORT) count += 1;
       continue;
     }
-    if (filters[key]) count += 1;
+    if (filterValueActive(filters[key])) count += 1;
   }
   return count;
 }
@@ -187,7 +220,13 @@ function toggleFilters() {
 function readFilters() {
   const data = new FormData(els.form);
   const filters = {};
-  for (const [key, value] of data.entries()) {
+  for (const key of FILTER_KEYS) {
+    if (MULTI_FILTER_KEYS.has(key)) {
+      const values = data.getAll(key).map((value) => value.trim()).filter(Boolean);
+      if (values.length) filters[key] = values;
+      continue;
+    }
+    const value = data.get(key);
     if (typeof value === "string" && value.trim() !== "") {
       filters[key] = value.trim();
     }
@@ -225,6 +264,11 @@ function readUrlState() {
   const params = new URLSearchParams(window.location.search);
   const filters = { sort: DEFAULT_SORT };
   for (const key of FILTER_KEYS) {
+    if (MULTI_FILTER_KEYS.has(key)) {
+      const values = params.getAll(key).map((value) => value.trim()).filter(Boolean);
+      if (values.length) filters[key] = values;
+      continue;
+    }
     const value = params.get(key);
     if (value != null && value.trim() !== "") {
       filters[key] = value.trim();
@@ -241,8 +285,15 @@ function applyStateToForm(filters) {
     if (!element.name) continue;
     if (element.type === "checkbox") {
       element.checked = element.name in filters;
+    } else if (element.multiple) {
+      const selected = filters[element.name];
+      const values = Array.isArray(selected) ? selected : selected ? [selected] : [];
+      for (const opt of element.options) {
+        opt.selected = values.includes(opt.value);
+      }
     } else {
-      element.value = filters[element.name] ?? "";
+      const value = filters[element.name];
+      element.value = Array.isArray(value) ? "" : value ?? "";
     }
   }
   if (els.sortSelect) {
@@ -252,12 +303,7 @@ function applyStateToForm(filters) {
 
 function syncUrl({ push = false, clearItem = false } = {}) {
   const params = new URLSearchParams();
-  for (const key of FILTER_KEYS) {
-    const value = state.filters[key];
-    if (value == null || String(value).trim() === "") continue;
-    if (key === "sort" && value === DEFAULT_SORT) continue;
-    params.set(key, String(value).trim());
-  }
+  appendFilterParams(params, state.filters);
   const page = pageFromOffset(state.offset);
   if (page > 1) {
     params.set("page", String(page));
@@ -278,7 +324,8 @@ function syncUrl({ push = false, clearItem = false } = {}) {
 }
 
 function buildQuery(extra = {}) {
-  const params = new URLSearchParams({ ...state.filters, ...extra });
+  const params = new URLSearchParams();
+  appendFilterParams(params, { ...state.filters, ...extra });
   params.set("limit", String(PAGE_SIZE));
   params.set("offset", String(state.offset));
   params.set("lang", getLocale());
@@ -1601,6 +1648,12 @@ els.form.addEventListener("reset", () => {
     syncFiltersToggleBadge();
   }, 0);
 });
+
+if (els.filtersActiveLabel) {
+  els.filtersActiveLabel.addEventListener("click", () => {
+    els.form.reset();
+  });
+}
 
 if (els.filtersOpen) {
   els.filtersOpen.addEventListener("click", () => toggleFilters());
