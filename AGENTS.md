@@ -37,7 +37,7 @@ scrapers/*.py  →  data/scraped_listings.json  →  parsing/llm.py
 
 ## Sources (complete list)
 
-`SourceType` = `maltapark` | `ownersbest` | `djar` | `propertymarket` | `yitaku` | `remax` | `simonmamo` | `belair`
+`SourceType` = `maltapark` | `ownersbest` | `djar` | `propertymarket` | `yitaku` | `remax` | `simonmamo` | `belair` | `re316`
 
 When adding a portal:
 

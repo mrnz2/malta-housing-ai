@@ -23,6 +23,7 @@ An automated pipeline for scraping, processing, analyzing, and storing real esta
 │                         │ -> remax.py
 │                         │ -> simonmamo.py
 │                         │ -> belair.py
+│                         │ -> re316.py
 └────────────┬────────────┘
              │ Merges raw payloads (by URL)
              ▼
@@ -88,7 +89,8 @@ malta-housing-ai/
 │   │   ├── yitaku.py
 │   │   ├── remax.py
 │   │   ├── simonmamo.py
-│   │   └── belair.py
+│   │   ├── belair.py
+│   │   └── re316.py
 │   ├── parsing/
 │   │   └── llm.py
 │   ├── analysis/
@@ -116,7 +118,7 @@ malta-housing-ai/
 
 * `malta_housing/models.py`: Shared Pydantic contracts (`ScrapedListing`, `MaltaPropertySchema`, `ParsedListing`).
 * `malta_housing/common.py`: Shared HTTP client (session + retry on 429/5xx; optional `curl_cffi` TLS impersonation; SiteGround PoW auto-solve), staging merge I/O, HTML text helpers.
-* `malta_housing/scrapers/*.py`: Portal scrapers (`maltapark`, `ownersbest`, `djar`, `propertymarket`, `yitaku`, `remax`, `simonmamo`, `belair`).
+* `malta_housing/scrapers/*.py`: Portal scrapers (`maltapark`, `ownersbest`, `djar`, `propertymarket`, `yitaku`, `remax`, `simonmamo`, `belair`, `re316`).
 * `malta_housing/parsing/llm.py`: Ollama extraction with checkpoints; skips URLs already in DB (unless `--force`).
 * `malta_housing/distances.py`: Locality profiles from `to_gzira.csv` — km to Gżira, sea proximity (`nad_morzem` / `blisko` / `daleko`), region.
 * `malta_housing/analysis/scoring.py`: Deterministic **base score** (0–8) from price/m², distance to Gżira, sea proximity, area, and structural flags (freehold, airspace, shell, seller).
@@ -161,7 +163,7 @@ malta-housing-ai/
 | `is_shell_form` | `bool` | |
 | `seller_type` | `OWNER \| AGENT \| SENSAR \| UNKNOWN \| null` | |
 | `key_features` | `list[str]` | Max ~4 features |
-| `source` | `maltapark \| ownersbest \| djar \| propertymarket \| yitaku \| remax \| simonmamo \| belair \| null` | Portal origin |
+| `source` | `maltapark \| ownersbest \| djar \| propertymarket \| yitaku \| remax \| simonmamo \| belair \| re316 \| null` | Portal origin |
 | `scraped_at` | `str \| null` | ISO timestamp from scrape |
 | `updated_at` | `str \| null` | ISO timestamp of last parse/DB write |
 | `distance_to_gzira_km` | `float \| null` | Estimated km to Gżira from `to_gzira.csv` |
@@ -235,6 +237,7 @@ python -m malta_housing run --source yitaku --pages 3
 python -m malta_housing run --source remax --pages 3
 python -m malta_housing run --source simonmamo --pages 3
 python -m malta_housing run --source belair --pages 3
+python -m malta_housing run --source re316 --pages 5
 ```
 
 **Step by step:**

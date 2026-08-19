@@ -27,6 +27,7 @@ _MESSAGES: dict[str, dict[str, dict[str, str]]] = {
         "remax": {"en": "RE/MAX", "pl": "RE/MAX"},
         "simonmamo": {"en": "Simon Mamo", "pl": "Simon Mamo"},
         "belair": {"en": "Belair", "pl": "Belair"},
+        "re316": {"en": "316 Real Estate", "pl": "316 Real Estate"},
     },
     "bank_risk": {
         "low": {"en": "Low", "pl": "Niskie"},

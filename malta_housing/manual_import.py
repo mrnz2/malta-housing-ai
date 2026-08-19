@@ -25,6 +25,7 @@ from malta_housing.models import ParsedListing, ScrapedListing, SourceType, utc_
 from malta_housing.parsing.llm import MODEL_NAME, parse_staged_item
 from malta_housing.scrapers.belair import parse_belair_html
 from malta_housing.scrapers.propertymarket import _normalize_listing_url, parse_propertymarket_html
+from malta_housing.scrapers.re316 import parse_re316_html
 
 ALL_SOURCES: frozenset[SourceType] = frozenset(
     {
@@ -36,6 +37,7 @@ ALL_SOURCES: frozenset[SourceType] = frozenset(
         "remax",
         "simonmamo",
         "belair",
+        "re316",
     }
 )
 
@@ -48,11 +50,13 @@ _PORTAL_HOST_MARKERS: tuple[tuple[str, SourceType], ...] = (
     ("remax-malta.com", "remax"),
     ("simonmamo.com", "simonmamo"),
     ("belair.com.mt", "belair"),
+    ("316.com.mt", "re316"),
 )
 
 _HTML_MARKERS: tuple[tuple[str, SourceType], ...] = (
     ("mylistingdetailstitle", "propertymarket"),
     ("singel_page_card", "belair"),
+    ("property-detail-info-list", "re316"),
     ("/property/sm-", "simonmamo"),
     ("maltapark.com", "maltapark"),
     ("ownersbest.com.mt", "ownersbest"),
@@ -61,6 +65,7 @@ _HTML_MARKERS: tuple[tuple[str, SourceType], ...] = (
     ("remax-malta.com", "remax"),
     ("yitaku.com", "yitaku"),
     ("belair.com.mt", "belair"),
+    ("316.com.mt", "re316"),
 )
 
 _LISTING_PATH_RE = re.compile(
@@ -138,7 +143,7 @@ def detect_source_with_llm(html: str) -> SourceType | None:
     prompt = (
         "Identify which Malta property portal this HTML page source came from.\n"
         "Return JSON only: {\"source\": \"maltapark|ownersbest|djar|propertymarket|"
-        "yitaku|remax|simonmamo|belair|null\"}\n\n"
+        "yitaku|remax|simonmamo|belair|re316|null\"}\n\n"
         f"HTML snippet:\n{snippet}"
     )
     try:
@@ -196,6 +201,8 @@ def listing_from_html(source: SourceType, html: str, url: str) -> ScrapedListing
         listing = parse_propertymarket_html(html, url)
     elif source == "belair":
         listing = parse_belair_html(html, url)
+    elif source == "re316":
+        listing = parse_re316_html(html, url)
     else:
         listing = _generic_html_listing(html, url, source)
     if not listing.raw_text.strip():
@@ -227,7 +234,7 @@ def run_manual_pipeline(
         raise ValueError(
             "Nie znaleziono odpowiedniego parsera dla tego HTML. "
             "Obsługiwane portale: maltapark, ownersbest, djar, propertymarket, "
-            "yitaku, remax, simonmamo, belair."
+            "yitaku, remax, simonmamo, belair, re316."
         )
 
     resolved_url = _normalize_url_for_source(resolved_url, source)
