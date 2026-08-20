@@ -341,6 +341,7 @@ def ensure_source(value: str) -> SourceType:
         "simonmamo",
         "belair",
         "re316",
+        "franksalt",
     }:
         raise ValueError(f"Unknown source: {value}")
     return value  # type: ignore[return-value]
@@ -356,6 +357,7 @@ _URL_SOURCE_HOSTS: tuple[tuple[str, SourceType], ...] = (
     ("simonmamo.com", "simonmamo"),
     ("belair.com.mt", "belair"),
     ("316.com.mt", "re316"),
+    ("franksalt.com.mt", "franksalt"),
 )
 
 
@@ -390,6 +392,7 @@ def resolve_source(source: str | None, url: str | None = None) -> SourceType | N
             "simonmamo",
             "belair",
             "re316",
+            "franksalt",
         }:
             return cleaned  # type: ignore[return-value]
     return infer_source_from_url(url)

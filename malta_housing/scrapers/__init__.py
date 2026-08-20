@@ -2,6 +2,7 @@
 
 from malta_housing.scrapers.belair import run_belair_scraper
 from malta_housing.scrapers.djar import run_djar_scraper
+from malta_housing.scrapers.franksalt import run_franksalt_scraper
 from malta_housing.scrapers.maltapark import run_scraper
 from malta_housing.scrapers.ownersbest import run_ownersbest_scraper
 from malta_housing.scrapers.propertymarket import run_propertymarket_scraper
@@ -20,4 +21,5 @@ __all__ = [
     "run_remax_scraper",
     "run_simonmamo_scraper",
     "run_re316_scraper",
+    "run_franksalt_scraper",
 ]

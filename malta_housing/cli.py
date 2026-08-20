@@ -17,6 +17,7 @@ from malta_housing.parsing.llm import run_parser
 from malta_housing.paths import DB_PATH
 from malta_housing.scrapers.belair import run_belair_scraper
 from malta_housing.scrapers.djar import run_djar_scraper
+from malta_housing.scrapers.franksalt import run_franksalt_scraper
 from malta_housing.scrapers.maltapark import run_scraper
 from malta_housing.scrapers.ownersbest import run_ownersbest_scraper
 from malta_housing.scrapers.propertymarket import run_propertymarket_scraper
@@ -53,6 +54,8 @@ def cmd_scrape(args: argparse.Namespace) -> None:
         run_belair_scraper(max_pages=args.pages)
     elif source == "re316":
         run_re316_scraper(max_pages=5 if args.pages == 3 else args.pages)
+    elif source == "franksalt":
+        run_franksalt_scraper(max_pages=5 if args.pages == 3 else args.pages)
     else:
         run_djar_scraper(max_pages=args.pages)
 
@@ -184,6 +187,7 @@ def build_parser() -> argparse.ArgumentParser:
             "simonmamo",
             "belair",
             "re316",
+            "franksalt",
         ],
         help="Portal to scrape",
     )
@@ -215,6 +219,7 @@ def build_parser() -> argparse.ArgumentParser:
             "simonmamo",
             "belair",
             "re316",
+            "franksalt",
         ],
         help="Portal to scrape",
     )
@@ -303,6 +308,7 @@ def build_parser() -> argparse.ArgumentParser:
             "simonmamo",
             "belair",
             "re316",
+            "franksalt",
         ],
         help="Only evaluate listings from this portal (default: all sources)",
     )
