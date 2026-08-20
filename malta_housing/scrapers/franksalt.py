@@ -55,6 +55,9 @@ _PROPERTY_TYPE_NAME_RE = re.compile(
     r"\[propertyType_details\].*?\[description\]\s*=>\s*([^\n\r]+)",
     re.S,
 )
+_AREA_SQM_RE = re.compile(r"\[areaSqm\]\s*=>\s*([\d.]+)")
+_INTERNAL_AREA_SQM_RE = re.compile(r"\[internalAreaSqm\]\s*=>\s*([\d.]+)")
+_EXTERNAL_AREA_SQM_RE = re.compile(r"\[externalAreaSqm\]\s*=>\s*([\d.]+)")
 
 
 def _search_filters() -> str:
@@ -224,6 +227,23 @@ def _dump_field(html: str, pattern: re.Pattern[str]) -> str | None:
     return value or None
 
 
+def _dump_area_sqm(html: str, pattern: re.Pattern[str]) -> str | None:
+    """Return area from PHP dump when present and > 0."""
+    raw = _dump_field(html, pattern)
+    if raw is None:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    if value <= 0:
+        return None
+    # Keep one decimal when needed (130.50 → 130.5), else int-like (122.00 → 122).
+    if value == int(value):
+        return str(int(value))
+    return f"{value:g}"
+
+
 def _raw_text_from_detail(html: str, url: str, title: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
     price_el = soup.select_one(".currency-price-container")
@@ -242,6 +262,10 @@ def _raw_text_from_detail(html: str, url: str, title: str) -> str:
             subtitle = text
             break
 
+    total_area = _dump_area_sqm(html, _AREA_SQM_RE)
+    internal_area = _dump_area_sqm(html, _INTERNAL_AREA_SQM_RE)
+    external_area = _dump_area_sqm(html, _EXTERNAL_AREA_SQM_RE)
+
     lines = [
         f"Title: {title}",
         f"URL: {url}",
@@ -251,6 +275,12 @@ def _raw_text_from_detail(html: str, url: str, title: str) -> str:
         f"Property type: {property_type or 'n/a'}",
         f"Subtitle: {subtitle or 'n/a'}",
     ]
+    if total_area:
+        lines.append(f"Total area: {total_area} sqm")
+    if internal_area:
+        lines.append(f"Internal area: {internal_area} sqm")
+    if external_area:
+        lines.append(f"External area: {external_area} sqm")
     tags = soup.select_one(".property-tags-container")
     if tags:
         lines.append(f"Rooms: {tags.get_text(' ', strip=True)}")

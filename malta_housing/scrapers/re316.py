@@ -74,6 +74,21 @@ def _meta_content(soup: BeautifulSoup, prop: str) -> str | None:
     return None
 
 
+def _normalize_detail_label(label: str) -> str:
+    """Map portal labels to evaluator-friendly area keys."""
+    compact = re.sub(r"\s+", " ", label).strip().lower()
+    compact = compact.replace("(m 2)", "(m2)").replace("(m²)", "(m2)")
+    if compact.startswith("total area"):
+        return "Total area"
+    if compact.startswith("plot area"):
+        return "Plot area"
+    if compact.startswith("internal area"):
+        return "Internal area"
+    if compact.startswith("external area"):
+        return "External area"
+    return label
+
+
 def _detail_rows(soup: BeautifulSoup) -> list[tuple[str, str]]:
     rows: list[tuple[str, str]] = []
     for block in soup.select(".property-detail-info-list"):
@@ -86,7 +101,7 @@ def _detail_rows(soup: BeautifulSoup) -> list[tuple[str, str]]:
             value = value_el.get_text(" ", strip=True) if value_el else item.get_text(" ", strip=True)
             value = re.sub(rf"^{re.escape(label)}\s*:?\s*", "", value, flags=re.I).strip()
             if label and value:
-                rows.append((label, value))
+                rows.append((_normalize_detail_label(label), value))
     return rows
 
 
@@ -154,6 +169,11 @@ def _raw_text_from_detail(html: str, url: str, title: str) -> str:
         f"Price: {price or 'n/a'}",
     ]
     for label, value in detail_rows:
+        # Evaluator expects "Total area: 94.64 sqm" (unit after number).
+        if label in {"Total area", "Internal area", "External area", "Plot area"}:
+            if re.fullmatch(r"\d+(?:[.,]\d+)?", value):
+                lines.append(f"{label}: {value} sqm")
+                continue
         lines.append(f"{label}: {value}")
     if og_description:
         lines.extend(["", "Summary:", og_description])

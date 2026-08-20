@@ -26,48 +26,45 @@ LLM_ADJUSTMENT_MAX = 2.0
 
 _CLIENT = ollama.Client(timeout=OLLAMA_TIMEOUT_S)
 
+# Decimal areas (130.50) and units incl. Frank Salt "sq mt", re316 "m 2".
+_AREA_NUM = r"(\d+(?:[.,]\d+)?)"
+_AREA_UNIT = (
+    r"(?:sq\.?\s*m(?:t|eters?|etres?)?|sqm|m\s*[²2]|m²|square\s*met(?:er|re)s?)"
+)
+
 _INTERNAL_AREA_PATTERNS = (
     re.compile(
-        r"internal\s+area[:\s]*(\d+)\s*(?:sqm|sq\.?\s*m|m²|square\s*met(?:er|re)s?)",
+        rf"internal\s+area(?:\s*m\s*[2²])?[:\s]*{_AREA_NUM}(?:\s*{_AREA_UNIT})?",
         re.I,
     ),
-    re.compile(
-        r"internal\s+area\s+m2[:\s]*(\d+)",
-        re.I,
-    ),
-    re.compile(
-        r"TotalIntArea[:\s\"]*(\d+)",
-        re.I,
-    ),
+    re.compile(rf"TotalIntArea[:\s\"]*{_AREA_NUM}", re.I),
 )
 _EXTERNAL_AREA_PATTERNS = (
     re.compile(
-        r"external\s+area[:\s]*(\d+)\s*(?:sqm|sq\.?\s*m|m²|square\s*met(?:er|re)s?)",
+        rf"external\s+area(?:\s*m\s*[2²])?[:\s]*{_AREA_NUM}(?:\s*{_AREA_UNIT})?",
         re.I,
     ),
-    re.compile(
-        r"external\s+area\s+m2[:\s]*(\d+)",
-        re.I,
-    ),
-    re.compile(
-        r"TotalExtArea[:\s\"]*(\d+)",
-        re.I,
-    ),
+    re.compile(rf"TotalExtArea[:\s\"]*{_AREA_NUM}", re.I),
 )
 _TOTAL_AREA_PATTERNS = (
     re.compile(
-        r"(?:total|gross)\s+area[:\s]*(\d+)\s*(?:sqm|sq\.?\s*m|m²|square\s*met(?:er|re)s?)",
+        rf"(?:total|gross)\s+area\s*\(\s*m\s*[2²]\s*\)\s*:?\s*{_AREA_NUM}",
         re.I,
     ),
     re.compile(
-        r"(\d+)\s*(?:sqm|sq\.?\s*m|m²|square\s*met(?:er|re)s?)\s*(?:total|gross)",
+        rf"(?:total|gross)\s+area(?:\s*m\s*[2²])?[:\s]*{_AREA_NUM}(?:\s*{_AREA_UNIT})?",
         re.I,
     ),
+    re.compile(
+        # Bare "Area m2: 95" (RE/MAX, Yitaku, Belair) — not internal/external.
+        rf"(?<![Ii]nternal )(?<![Ee]xternal )area\s*m\s*[2²]\s*[:\s]*{_AREA_NUM}",
+        re.I,
+    ),
+    re.compile(rf"{_AREA_NUM}\s*{_AREA_UNIT}\s*(?:total|gross)", re.I),
 )
-_GENERIC_AREA_PATTERN = re.compile(
-    r"(\d+)\s*(?:sqm|sq\.?\s*m|m²|square\s*met(?:er|re)s?)",
-    re.I,
-)
+_GENERIC_AREA_PATTERN = re.compile(rf"{_AREA_NUM}\s*{_AREA_UNIT}", re.I)
+# Skip UI filter junk like "0 - 100 Sqm".
+_AREA_RANGE_PREFIX = re.compile(r"\d+(?:[.,]\d+)?\s*[\-–—]\s*$")
 _FLOOR_PATTERN = re.compile(
     r"(?:floor|level|storey|story)[:\s#]*(\d+)|(\d+)(?:st|nd|rd|th)\s+floor",
     re.I,
@@ -92,30 +89,49 @@ _TEMPORARY_RENT_PATTERN = re.compile(
 )
 
 
-def _valid_area(value: int) -> bool:
-    return 10 <= value <= 10_000
+def _valid_area(value: int, *, minimum: int = 10) -> bool:
+    return minimum <= value <= 10_000
 
 
-def _first_area(patterns: tuple[re.Pattern[str], ...], text: str) -> int | None:
+def _parse_area_number(raw: str) -> int | None:
+    try:
+        value = float(str(raw).replace(",", ".").strip())
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return int(round(value))
+
+
+def _first_area(
+    patterns: tuple[re.Pattern[str], ...],
+    text: str,
+    *,
+    minimum: int = 10,
+) -> int | None:
     for pattern in patterns:
         match = pattern.search(text)
-        if match:
-            value = int(match.group(1))
-            if _valid_area(value):
-                return value
+        if not match:
+            continue
+        value = _parse_area_number(match.group(1))
+        if value is not None and _valid_area(value, minimum=minimum):
+            return value
     return None
 
 
 def _extract_areas_from_text(text: str) -> dict[str, int | None]:
     internal = _first_area(_INTERNAL_AREA_PATTERNS, text)
-    external = _first_area(_EXTERNAL_AREA_PATTERNS, text)
+    external = _first_area(_EXTERNAL_AREA_PATTERNS, text, minimum=1)
     total = _first_area(_TOTAL_AREA_PATTERNS, text)
     if internal is None and total is None:
-        generic = _GENERIC_AREA_PATTERN.search(text)
-        if generic:
-            value = int(generic.group(1))
-            if _valid_area(value):
+        for match in _GENERIC_AREA_PATTERN.finditer(text):
+            prefix = text[max(0, match.start(1) - 24) : match.start(1)]
+            if _AREA_RANGE_PREFIX.search(prefix):
+                continue
+            value = _parse_area_number(match.group(1))
+            if value is not None and _valid_area(value):
                 total = value
+                break
     return {
         "internal_area_sqm": internal,
         "external_area_sqm": external,
@@ -235,13 +251,18 @@ def _merge_valuation_facts(regex_facts: dict[str, Any], llm_facts: dict[str, Any
     llm = dict(llm_facts or {})
     merged = normalize_valuation_facts(regex_facts)
 
-    for key in ("internal_area_sqm", "external_area_sqm", "total_area_sqm", "floor_level"):
-        llm_val = _coerce_int(llm.get(key))
+    for key in ("internal_area_sqm", "external_area_sqm", "total_area_sqm"):
+        # Prefer structured scrape/regex areas over LLM guesses (avoids bad €/m²).
         regex_val = merged.get(key)
-        if llm_val is not None:
-            merged[key] = llm_val
-        elif regex_val is not None:
+        llm_val = _coerce_int(llm.get(key))
+        if regex_val is not None:
             merged[key] = regex_val
+        elif llm_val is not None:
+            merged[key] = llm_val
+
+    llm_floor = _coerce_int(llm.get("floor_level"))
+    if llm_floor is not None:
+        merged["floor_level"] = llm_floor
 
     if llm.get("has_lift") is not None:
         merged["has_lift"] = bool(llm["has_lift"])
