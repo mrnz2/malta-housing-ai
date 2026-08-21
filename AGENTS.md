@@ -116,6 +116,7 @@ Use project venv: `venv\Scripts\python.exe` (Windows).
 * `impersonate="chrome124"` uses `curl_cffi` (needed for Property Market TLS blocks).
 * SiteGround `HTTP 202` + `sg-captcha` is auto-solved (SHA1 PoW → `_I_` cookie) inside `HttpClient`.
 * Property Market: listing URLs need trailing `/`; pagination needs full query + `pp=N` (not bare `?pp=N`).
+* Sensar (`sensaramalta.com`): Archivio AJAX is Cloudflare-blocked for `curl_cffi`; listing URLs are collected via Playwright (Chrome/Edge/Chromium), detail pages still use `HttpClient`. Requires `playwright` + `python -m playwright install chromium`.
 
 ## Conventions for agents
 

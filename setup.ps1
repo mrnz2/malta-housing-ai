@@ -51,6 +51,9 @@ if (-not (Test-Path "requirements.txt")) {
 & $venvPip install --upgrade pip | Out-Null
 & $venvPip install -r requirements.txt
 Write-Host "  └─ Pomyślnie zainstalowano wszystkie zależności." -ForegroundColor Green
+Write-Host "  └─ Instalacja przeglądarki Chromium (Sensar / Playwright)..." -ForegroundColor Yellow
+& $venvPython -m playwright install chromium
+Write-Host "  └─ Playwright Chromium gotowy." -ForegroundColor Green
 
 # 5. Inicjalizacja struktury bazy danych (tylko schema — bez parsed JSON)
 Write-Host "`n[5/5] Inicjalizacja bazy danych SQLite..." -ForegroundColor Yellow

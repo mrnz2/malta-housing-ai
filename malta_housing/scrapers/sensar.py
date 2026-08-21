@@ -1,4 +1,4 @@
-"""Sensara Malta scraper — Archivio AJAX merged into scraped_listings.json."""
+"""Sensara Malta scraper — browser list + HttpClient details → scraped_listings.json."""
 
 from __future__ import annotations
 
@@ -19,40 +19,14 @@ _DEFAULT_MAX_PAGES = 5
 MAX_PRICE = "400000"
 
 SEARCH_PAGE_URL = f"{BASE_URL}/en/sales/?pr2={MAX_PRICE}&p={{page}}"
-AJAX_URL = f"{BASE_URL}/ajax.html?azi=Archivio&lin=en&n={{page}}"
 
-# Form honeypot filled by browser JS before Archivio POST.
-_H_UFIELD_HUMAN = "Sono un essere umano. Fidati di quello che faccio"
-
+# Detail pages accept curl_cffi; Archivio AJAX is Cloudflare-blocked without a real browser.
 HEADERS = {
     "Referer": f"{BASE_URL}/en/sales/",
-    "Accept": "text/html, */*; q=0.01",
-    "X-Requested-With": "XMLHttpRequest",
-    "Origin": BASE_URL,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
 _LISTING_HREF_RE = re.compile(r"/en/sales/V[^\s\"'<>#?]+", re.I)
-
-
-def _archivio_payload(page_num: int) -> dict[str, str]:
-    return {
-        "H_Url": f"http://www.sensaramalta.com/en/sales/?pr2={MAX_PRICE}&p={page_num}",
-        "Src_Li_Tip": "V",
-        "Src_Li_Cat": "",
-        "Src_Li_Cit": "",
-        "Src_Li_Zon": "",
-        "Src_T_Pr1": "",
-        "Src_T_Pr2": MAX_PRICE,
-        "Src_T_Mq1": "",
-        "Src_T_Mq2": "",
-        "Src_T_Cod": "",
-        "Src_Li_Ord": "",
-        "T_EField": "",
-        "H_UField": _H_UFIELD_HUMAN,
-        "CP_C_Funz": "funz",
-        "CP_C_Mark": "mark",
-        "CP_C_Anal": "anal",
-    }
 
 
 def _normalize_listing_url(href: str) -> str | None:
@@ -73,47 +47,103 @@ def _request_url(url: str) -> str:
     )
 
 
-def _links_from_html(html: str) -> list[str]:
-    soup = BeautifulSoup(html, "html.parser")
+def _links_from_hrefs(hrefs: list[str]) -> list[str]:
     links: set[str] = set()
-    for a_tag in soup.find_all("a", href=True):
-        normalized = _normalize_listing_url(a_tag["href"])
+    for href in hrefs:
+        if not href:
+            continue
+        normalized = _normalize_listing_url(href)
         if normalized:
             links.add(normalized)
-    if not links:
-        for match in _LISTING_HREF_RE.finditer(html):
-            normalized = _normalize_listing_url(match.group(0))
-            if normalized:
-                links.add(normalized)
     return sorted(links)
 
 
-def fetch_listing_links(client: HttpClient, page_num: int) -> list[str]:
-    """POST Archivio page and return unique property URLs from the HTML fragment."""
-    search_url = SEARCH_PAGE_URL.format(page=page_num)
-    ajax_url = AJAX_URL.format(page=page_num)
-    print(f"🔎 [Sensar] AJAX strona {page_num}: {search_url}")
+def _launch_chromium(playwright):  # type: ignore[no-untyped-def]
+    """Prefer installed Chrome/Edge (better Cloudflare pass rate), else bundled Chromium."""
+    last_error: Exception | None = None
+    for kwargs in (
+        {"channel": "chrome", "headless": True},
+        {"channel": "msedge", "headless": True},
+        {"headless": True},
+    ):
+        try:
+            return playwright.chromium.launch(**kwargs)
+        except Exception as exc:  # noqa: BLE001 — try next launch mode
+            last_error = exc
+    raise RuntimeError(f"Could not launch Chromium/Chrome/Edge: {last_error}")
 
+
+def _wait_for_listings(page) -> None:  # type: ignore[no-untyped-def]
+    """Wait out Cloudflare interstitial, then for listing cards."""
     try:
-        response = client.session.post(
-            ajax_url,
-            headers={**HEADERS, "Referer": search_url},
-            data=_archivio_payload(page_num),
-            timeout=client.timeout,
+        page.wait_for_function(
+            "() => !/just a moment|attention required/i.test(document.title)",
+            timeout=60_000,
         )
-        response.raise_for_status()
-    except Exception as e:
-        print(f"   └─ Błąd AJAX strony {page_num}: {e}")
-        return []
+    except Exception:
+        pass
+    page.wait_for_selector("a.annuncio[href*='/en/sales/V']", timeout=45_000)
 
-    html = response.text or ""
-    if "Just a moment" in html or "challenge-platform" in html:
-        print(f"   └─ Cloudflare zablokował AJAX na stronie {page_num}.")
-        return []
 
-    links = _links_from_html(html)
-    print(f"   └─ Znaleziono {len(links)} ogłoszeń.")
-    return links
+def fetch_listing_links_playwright(max_pages: int) -> list[str]:
+    """Load sales pages in a real browser (site JS + CF), collect property URLs."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError(
+            "Sensar wymaga pakietu playwright (Cloudflare blokuje zwykły AJAX).\n"
+            "  .\\venv\\Scripts\\pip.exe install playwright\n"
+            "  .\\venv\\Scripts\\python.exe -m playwright install chromium"
+        ) from exc
+
+    print(f"🧭 [Sensar] Lista przez przeglądarkę (strony 1-{max_pages})…")
+    all_links: set[str] = set()
+
+    with sync_playwright() as p:
+        browser = _launch_chromium(p)
+        context = browser.new_context(
+            locale="en-US",
+            viewport={"width": 1365, "height": 900},
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+        )
+        page = context.new_page()
+        try:
+            for page_num in range(1, max_pages + 1):
+                url = SEARCH_PAGE_URL.format(page=page_num)
+                print(f"🔎 [Sensar] Strona {page_num}: {url}")
+                try:
+                    page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+                    _wait_for_listings(page)
+                    # Site injects cards via Archivio AJAX after load.
+                    page.wait_for_timeout(800)
+                    hrefs = page.eval_on_selector_all(
+                        "a.annuncio[href*='/en/sales/V']",
+                        "els => els.map(e => e.getAttribute('href') || '')",
+                    )
+                    links = _links_from_hrefs(list(hrefs) if isinstance(hrefs, list) else [])
+                except Exception as e:
+                    print(f"   └─ Błąd strony {page_num}: {e}")
+                    if page_num == 1:
+                        break
+                    print("   └─ Koniec paginacji.")
+                    break
+
+                print(f"   └─ Znaleziono {len(links)} ogłoszeń.")
+                if not links:
+                    print("   └─ Pusta strona — koniec paginacji.")
+                    break
+                all_links.update(links)
+                if page_num < max_pages:
+                    time.sleep(random.uniform(0.6, 1.2))
+        finally:
+            context.close()
+            browser.close()
+
+    return sorted(all_links)
 
 
 def _feature_lines(soup: BeautifulSoup) -> list[str]:
@@ -188,28 +218,17 @@ def scrape_item_details(client: HttpClient, url: str) -> ScrapedListing | None:
 
 def run_sensar_scraper(max_pages: int = _DEFAULT_MAX_PAGES) -> list[dict]:
     """Fetch up to max_pages from Sensara Malta (default 5), merge into staging."""
-    client = HttpClient(headers=HEADERS, impersonate="chrome124", timeout=25.0)
-    all_item_urls: set[str] = set()
-
     print(f"🚀 Rozpoczynam pobieranie z Sensara Malta (strony 1-{max_pages})...\n")
 
-    # Warm session on the search page (cookies / CF bm).
     try:
-        client.get(SEARCH_PAGE_URL.format(page=1))
-    except Exception as e:
-        print(f"   └─ Ostrzeżenie: nie udało się otworzyć listy: {e}")
-
-    for page in range(1, max_pages + 1):
-        links = fetch_listing_links(client, page)
-        if not links:
-            print("   └─ Pusta strona — koniec paginacji.")
-            break
-        all_item_urls.update(links)
-        if page < max_pages:
-            time.sleep(random.uniform(0.8, 1.6))
+        all_item_urls = set(fetch_listing_links_playwright(max_pages))
+    except RuntimeError as e:
+        print(f"❌ {e}")
+        return []
 
     print(f"\n📊 Łącznie zebrano {len(all_item_urls)} unikalnych ofert z Sensara Malta.\n")
 
+    client = HttpClient(headers=HEADERS, impersonate="chrome124", timeout=25.0)
     scraped_data: list[ScrapedListing] = []
     skipped_gozo = 0
     skipped_hidden = 0
