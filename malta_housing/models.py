@@ -23,6 +23,7 @@ SourceType = Literal[
     "belair",
     "re316",
     "franksalt",
+    "sensar",
 ]
 
 

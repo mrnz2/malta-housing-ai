@@ -29,6 +29,7 @@ _MESSAGES: dict[str, dict[str, dict[str, str]]] = {
         "belair": {"en": "Belair", "pl": "Belair"},
         "re316": {"en": "316 Real Estate", "pl": "316 Real Estate"},
         "franksalt": {"en": "Frank Salt", "pl": "Frank Salt"},
+        "sensar": {"en": "Sensara Malta", "pl": "Sensara Malta"},
     },
     "bank_risk": {
         "low": {"en": "Low", "pl": "Niskie"},
