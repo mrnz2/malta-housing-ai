@@ -1,8 +1,21 @@
 import { applyTranslations, getLocale, initI18n, intlLocale, t, wireLangSwitcher } from "./i18n.js";
+import { localityMapTooltip } from "./localityMapTooltip.js";
 
 const PAGE_SIZE = 50;
 const DEFAULT_SORT = "ai_score_desc";
 const HOLD_HIDE_MS = 1000;
+const SORT_COLUMNS = {
+  ai_score: { defaultDir: "desc" },
+  locality: { defaultDir: "asc" },
+  gzira: { defaultDir: "asc" },
+  price: { defaultDir: "asc" },
+  price_sqm: { defaultDir: "asc" },
+  area_sqm: { defaultDir: "desc" },
+  bedrooms: { defaultDir: "desc" },
+  source: { defaultDir: "asc" },
+  ready: { defaultDir: "desc" },
+  fav: { defaultDir: "desc" },
+};
 const FILTER_KEYS = [
   "q",
   "locality",
@@ -40,8 +53,8 @@ const els = {
   statAvg: document.getElementById("stat-avg"),
   statScored: document.getElementById("stat-scored"),
   statAvgScore: document.getElementById("stat-avg-score"),
-  sortScore: document.getElementById("sort-score"),
   sortSelect: document.getElementById("filter-sort"),
+  sortHeaders: document.querySelectorAll(".sortable-th"),
   locality: document.getElementById("filter-locality"),
   source: document.getElementById("filter-source"),
   seller: document.getElementById("filter-seller"),
@@ -50,6 +63,7 @@ const els = {
   detailView: document.getElementById("detail-view"),
   detailEdit: document.getElementById("detail-edit-form"),
   detailTranslateBtn: document.getElementById("detail-translate"),
+  detailReevaluateBtn: document.getElementById("detail-reevaluate"),
   detailEditBtn: document.getElementById("detail-edit-open"),
   detailEditSave: document.getElementById("detail-edit-save"),
   detailEditCancel: document.getElementById("detail-edit-cancel"),
@@ -57,6 +71,7 @@ const els = {
   editTitle: document.getElementById("edit-title"),
   editPrice: document.getElementById("edit-price"),
   editBedrooms: document.getElementById("edit-bedrooms"),
+  editAreaSqm: document.getElementById("edit-area-sqm"),
   editLocality: document.getElementById("edit-locality"),
   editPropertyType: document.getElementById("edit-property-type"),
   editSellerType: document.getElementById("edit-seller-type"),
@@ -104,9 +119,25 @@ function euro(value) {
   }).format(Number(value));
 }
 
+function computePricePerSqm(priceEur, areaSqm) {
+  const price = Number(priceEur);
+  const area = Number(areaSqm);
+  if (!Number.isFinite(price) || !Number.isFinite(area) || area <= 0) return null;
+  return Math.round((price / area) * 100) / 100;
+}
+
+function listingPricePerSqm(listing) {
+  return computePricePerSqm(listing?.price_eur, listing?.area_sqm);
+}
+
 function formatPricePerSqm(value) {
   if (value == null || Number.isNaN(Number(value))) return "—";
   return euro(value);
+}
+
+function formatAreaSqm(value) {
+  if (value == null || value === "" || Number.isNaN(Number(value))) return t("unknown");
+  return String(Math.round(Number(value)));
 }
 
 function fillSelect(select, values, blankLabel = null) {
@@ -346,20 +377,40 @@ async function loadStats() {
   fillSelect(els.type, stats.property_types || []);
 }
 
+function parseColumnSort(sort) {
+  const value = sort || DEFAULT_SORT;
+  const match = value.match(/^(.*)_(asc|desc)$/);
+  if (match && SORT_COLUMNS[match[1]]) {
+    return { key: match[1], dir: match[2] };
+  }
+  return { key: null, dir: null };
+}
+
 function syncSortHeader() {
-  const sort = state.filters.sort || "ai_score_desc";
-  const isScoreSort = sort === "ai_score_desc" || sort === "ai_score_asc";
-  if (!els.sortScore) return;
-  els.sortScore.classList.toggle("is-active", isScoreSort);
-  els.sortScore.dataset.direction = sort === "ai_score_asc" ? "asc" : "desc";
+  const sort = state.filters.sort || DEFAULT_SORT;
+  const { key, dir } = parseColumnSort(sort);
+  els.sortHeaders.forEach((th) => {
+    const active = th.dataset.sort === key;
+    th.classList.toggle("is-active", active);
+    if (active) th.dataset.direction = dir;
+    else delete th.dataset.direction;
+  });
   if (els.sortSelect && [...els.sortSelect.options].some((o) => o.value === sort)) {
     els.sortSelect.value = sort;
   }
 }
 
-function setScoreSort(direction) {
-  const sort = direction === "asc" ? "ai_score_asc" : "ai_score_desc";
-  state.filters = { ...state.filters, sort };
+function setColumnSort(columnKey) {
+  const spec = SORT_COLUMNS[columnKey];
+  if (!spec) return;
+  const current = parseColumnSort(state.filters.sort);
+  const dir =
+    current.key === columnKey
+      ? current.dir === "desc"
+        ? "asc"
+        : "desc"
+      : spec.defaultDir;
+  state.filters = { ...state.filters, sort: `${columnKey}_${dir}` };
   state.offset = 0;
   syncSortHeader();
   commitListings({ push: true });
@@ -754,6 +805,7 @@ window.addEventListener(
     if (scoreTooltipAnchor && !scoreTooltipEl?.hidden) {
       positionScoreTooltip(scoreTooltipAnchor);
     }
+    localityMapTooltip.reposition();
     priceHistoryTooltip.reposition();
     titleDatesTooltip.reposition();
     scoreBreakdownTooltip.reposition();
@@ -782,7 +834,7 @@ function scoreClass(value) {
   return "score-low";
 }
 
-const TABLE_COLS = 12;
+const TABLE_COLS = 13;
 
 function favIcon(isFav) {
   return isFav ? "♥" : "♡";
@@ -807,6 +859,7 @@ function renderNotesRow(id, notesText) {
 function renderRows(items) {
   els.body.innerHTML = "";
   hideScoreTooltip();
+  localityMapTooltip.hide();
   if (!items.length) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td colspan="${TABLE_COLS}"><div class="empty">${escapeHtml(t("empty.listings"))}<br/>${escapeHtml(t("empty.pipeline"))}</div></td>`;
@@ -834,11 +887,12 @@ function renderRows(items) {
         <span class="cell-meta">${flags || escapeHtml(item.property_type_label || item.property_type || "")}</span>
       </td>
       ${scoreCell}
-      <td>${escapeHtml(item.locality || "—")}</td>
+      <td class="locality-cell"><span class="locality-name">${escapeHtml(item.locality || "—")}</span></td>
       <td class="price">${formatKm(item.distance_to_gzira_km)}</td>
       <td>${escapeHtml(formatSeaProximity(item))}</td>
       <td class="price">${euro(item.price_eur)}</td>
-      <td class="price">${formatPricePerSqm(item.price_per_sqm)}</td>
+      <td>${formatAreaSqm(item.area_sqm)}</td>
+      <td class="price">${formatPricePerSqm(listingPricePerSqm(item))}</td>
       <td>${item.bedrooms ?? "—"}</td>
       <td>${escapeHtml(item.source_label || item.source || "—")}</td>
       <td class="ready-cell"><span class="ready-badge ${readyClass(item.ready)}">${formatReady(item.ready)}</span></td>
@@ -859,7 +913,17 @@ function renderRows(items) {
     const hideBtn = tr.querySelector(".hold-hide-btn");
     const favBtn = tr.querySelector(".fav-btn");
     const scoreWrap = tr.querySelector(".score-badge-wrap");
+    const localityName = tr.querySelector(".locality-name");
     if (scoreWrap) wireScoreTooltip(scoreWrap, item);
+    if (localityName) {
+      localityMapTooltip.wire(localityName, item.locality || "");
+      if (item.locality) {
+        localityName.setAttribute(
+          "aria-label",
+          `${item.locality} — ${t("map.preview")}`
+        );
+      }
+    }
     wireHoldHideButton(hideBtn, {
       listingId: item.id,
       isHidden: item.is_hidden,
@@ -1287,11 +1351,77 @@ async function translateDetailListing() {
   }
 }
 
+function setDetailReevaluateBusy(busy) {
+  if (!els.detailReevaluateBtn) return;
+  els.detailReevaluateBtn.disabled = busy;
+  els.detailReevaluateBtn.textContent = busy
+    ? t("detail.reevaluating")
+    : t("detail.reevaluate");
+}
+
+async function reevaluateDetailListing() {
+  if (!currentDetailListing) return;
+  const id = currentDetailListing.id;
+  const payloadBody = detailEditMode
+    ? { locale: getLocale(), fields: collectEditFields() }
+    : { locale: getLocale() };
+  setDetailReevaluateBusy(true);
+  if (detailEditMode) {
+    setDetailEditStatus(t("detail.reevaluating"), "running");
+  } else if (els.detailNotesStatus) {
+    els.detailNotesStatus.hidden = true;
+    els.detailNotesStatus.textContent = "";
+  }
+  try {
+    const res = await fetch(
+      `/api/listings/${id}/evaluate?lang=${encodeURIComponent(getLocale())}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payloadBody),
+      },
+    );
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const message =
+        payload.error === "no_raw_text"
+          ? t("detail.reevaluateNoRawText")
+          : payload.error || t("detail.reevaluateError");
+      if (detailEditMode) {
+        setDetailEditStatus(message, "error");
+      } else if (els.detailNotesStatus) {
+        els.detailNotesStatus.hidden = false;
+        els.detailNotesStatus.textContent = message;
+      }
+      return;
+    }
+    exitDetailEdit();
+    await loadStats();
+    await loadListings();
+    await openDetail(id, { push: false });
+    if (els.detailNotesStatus) {
+      els.detailNotesStatus.hidden = false;
+      els.detailNotesStatus.textContent = t("detail.reevaluateOk");
+    }
+  } catch {
+    const message = t("detail.reevaluateError");
+    if (detailEditMode) {
+      setDetailEditStatus(message, "error");
+    } else if (els.detailNotesStatus) {
+      els.detailNotesStatus.hidden = false;
+      els.detailNotesStatus.textContent = message;
+    }
+  } finally {
+    setDetailReevaluateBusy(false);
+  }
+}
+
 function populateEditForm(listing) {
   if (!listing) return;
   els.editTitle.value = pickLocaleValue(listing, "title") || "";
   els.editPrice.value = listing.price_eur ?? "";
   els.editBedrooms.value = listing.bedrooms ?? "";
+  els.editAreaSqm.value = listing.area_sqm ?? "";
   els.editLocality.value = listing.locality || "";
   els.editPropertyType.value = listing.property_type || "";
   els.editSellerType.value = listing.seller_type || "";
@@ -1315,10 +1445,12 @@ function populateEditForm(listing) {
 function collectEditFields() {
   const priceRaw = els.editPrice.value.trim();
   const bedroomsRaw = els.editBedrooms.value.trim();
+  const areaRaw = els.editAreaSqm.value.trim();
   return {
     title: els.editTitle.value.trim(),
     price_eur: priceRaw === "" ? null : Number.parseInt(priceRaw, 10),
     bedrooms: bedroomsRaw === "" ? null : Number.parseInt(bedroomsRaw, 10),
+    area_sqm: areaRaw === "" ? null : Number.parseInt(areaRaw, 10),
     locality: els.editLocality.value.trim(),
     property_type: els.editPropertyType.value.trim(),
     seller_type: els.editSellerType.value.trim(),
@@ -1388,6 +1520,7 @@ async function saveDetailEdit() {
 async function openDetail(id, { push = true } = {}) {
   hideScoreTooltip();
   hideHoverTooltips();
+  localityMapTooltip.hide();
   const [listingRes, historyRes] = await Promise.all([
     fetch(`/api/listings/${id}?lang=${encodeURIComponent(getLocale())}`),
     fetch(`/api/listings/${id}/history`),
@@ -1419,6 +1552,17 @@ async function openDetail(id, { push = true } = {}) {
   const priceEl = document.getElementById("detail-price");
   priceEl.textContent = euro(listing.price_eur);
   wirePriceHistoryTooltip(priceEl, history);
+  const priceSqmEl = document.getElementById("detail-price-sqm");
+  const askingPriceSqm = listingPricePerSqm(listing);
+  if (priceSqmEl) {
+    if (askingPriceSqm != null) {
+      priceSqmEl.textContent = `${formatPricePerSqm(askingPriceSqm)} / m²`;
+      priceSqmEl.hidden = false;
+    } else {
+      priceSqmEl.textContent = "";
+      priceSqmEl.hidden = true;
+    }
+  }
 
   const evalBlock = document.getElementById("detail-evaluation");
   const hasScore = listing.ai_score != null && !Number.isNaN(Number(listing.ai_score));
@@ -1461,7 +1605,9 @@ async function openDetail(id, { push = true } = {}) {
 
   const grid = document.getElementById("detail-grid");
   const fields = [
-    [t("detail.bedrooms"), listing.bedrooms ?? "—"],
+    [t("detail.bedrooms"), listing.bedrooms ?? t("unknown")],
+    [t("detail.area"), formatAreaSqm(listing.area_sqm)],
+    [t("detail.priceSqm"), formatPricePerSqm(listingPricePerSqm(listing))],
     [t("detail.seller"), listing.seller_type_label || listing.seller_type || "—"],
     [t("detail.distanceGzira"), formatKm(listing.distance_to_gzira_km)],
     [t("detail.seaProximity"), formatSeaProximity(listing)],
@@ -1671,13 +1817,9 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-if (els.sortScore) {
-  els.sortScore.addEventListener("click", () => {
-    const current = state.filters.sort || "ai_score_desc";
-    const next = current === "ai_score_desc" ? "ai_score_asc" : "ai_score_desc";
-    setScoreSort(next === "ai_score_asc" ? "asc" : "desc");
-  });
-}
+els.sortHeaders.forEach((th) => {
+  th.addEventListener("click", () => setColumnSort(th.dataset.sort));
+});
 
 els.prev.addEventListener("click", () => {
   state.offset = Math.max(0, state.offset - PAGE_SIZE);
@@ -1713,6 +1855,9 @@ window.addEventListener("popstate", async () => {
 els.detailCloseBtn?.addEventListener("click", () => closeDetail());
 if (els.detailTranslateBtn) {
   els.detailTranslateBtn.addEventListener("click", () => translateDetailListing());
+}
+if (els.detailReevaluateBtn) {
+  els.detailReevaluateBtn.addEventListener("click", () => reevaluateDetailListing());
 }
 if (els.detailEditBtn) {
   els.detailEditBtn.addEventListener("click", () => enterDetailEdit());
@@ -1766,6 +1911,7 @@ state.offset = initialUrlState.offset;
 
 await initI18n();
 wireLangSwitcher();
+localityMapTooltip.init();
 syncDetailEditChrome();
 window.addEventListener("localechange", async () => {
   applyTranslations();

@@ -16,6 +16,7 @@ from malta_housing.analysis.valuation import (
 )
 from malta_housing.distances import sea_proximity_for
 from malta_housing.models import ParsedListing
+from malta_housing.parsing.area import extract_areas_from_text, valid_area
 from malta_housing.parsing.llm import clean_raw_text
 
 MODEL_NAME = "qwen2.5:7b"
@@ -26,45 +27,6 @@ LLM_ADJUSTMENT_MAX = 2.0
 
 _CLIENT = ollama.Client(timeout=OLLAMA_TIMEOUT_S)
 
-# Decimal areas (130.50) and units incl. Frank Salt "sq mt", re316 "m 2".
-_AREA_NUM = r"(\d+(?:[.,]\d+)?)"
-_AREA_UNIT = (
-    r"(?:sq\.?\s*m(?:t|eters?|etres?)?|sqm|m\s*[²2]|m²|square\s*met(?:er|re)s?)"
-)
-
-_INTERNAL_AREA_PATTERNS = (
-    re.compile(
-        rf"internal\s+area(?:\s*m\s*[2²])?[:\s]*{_AREA_NUM}(?:\s*{_AREA_UNIT})?",
-        re.I,
-    ),
-    re.compile(rf"TotalIntArea[:\s\"]*{_AREA_NUM}", re.I),
-)
-_EXTERNAL_AREA_PATTERNS = (
-    re.compile(
-        rf"external\s+area(?:\s*m\s*[2²])?[:\s]*{_AREA_NUM}(?:\s*{_AREA_UNIT})?",
-        re.I,
-    ),
-    re.compile(rf"TotalExtArea[:\s\"]*{_AREA_NUM}", re.I),
-)
-_TOTAL_AREA_PATTERNS = (
-    re.compile(
-        rf"(?:total|gross)\s+area\s*\(\s*m\s*[2²]\s*\)\s*:?\s*{_AREA_NUM}",
-        re.I,
-    ),
-    re.compile(
-        rf"(?:total|gross)\s+area(?:\s*m\s*[2²])?[:\s]*{_AREA_NUM}(?:\s*{_AREA_UNIT})?",
-        re.I,
-    ),
-    re.compile(
-        # Bare "Area m2: 95" (RE/MAX, Yitaku, Belair) — not internal/external.
-        rf"(?<![Ii]nternal )(?<![Ee]xternal )area\s*m\s*[2²]\s*[:\s]*{_AREA_NUM}",
-        re.I,
-    ),
-    re.compile(rf"{_AREA_NUM}\s*{_AREA_UNIT}\s*(?:total|gross)", re.I),
-)
-_GENERIC_AREA_PATTERN = re.compile(rf"{_AREA_NUM}\s*{_AREA_UNIT}", re.I)
-# Skip UI filter junk like "0 - 100 Sqm".
-_AREA_RANGE_PREFIX = re.compile(r"\d+(?:[.,]\d+)?\s*[\-–—]\s*$")
 _FLOOR_PATTERN = re.compile(
     r"(?:floor|level|storey|story)[:\s#]*(\d+)|(\d+)(?:st|nd|rd|th)\s+floor",
     re.I,
@@ -87,56 +49,6 @@ _TEMPORARY_RENT_PATTERN = re.compile(
     r"temporary\s+(?:ground\s+)?rent|ground\s+rent.*\d+\s+years?\s+(?:left|remaining)",
     re.I,
 )
-
-
-def _valid_area(value: int, *, minimum: int = 10) -> bool:
-    return minimum <= value <= 10_000
-
-
-def _parse_area_number(raw: str) -> int | None:
-    try:
-        value = float(str(raw).replace(",", ".").strip())
-    except (TypeError, ValueError):
-        return None
-    if value <= 0:
-        return None
-    return int(round(value))
-
-
-def _first_area(
-    patterns: tuple[re.Pattern[str], ...],
-    text: str,
-    *,
-    minimum: int = 10,
-) -> int | None:
-    for pattern in patterns:
-        match = pattern.search(text)
-        if not match:
-            continue
-        value = _parse_area_number(match.group(1))
-        if value is not None and _valid_area(value, minimum=minimum):
-            return value
-    return None
-
-
-def _extract_areas_from_text(text: str) -> dict[str, int | None]:
-    internal = _first_area(_INTERNAL_AREA_PATTERNS, text)
-    external = _first_area(_EXTERNAL_AREA_PATTERNS, text, minimum=1)
-    total = _first_area(_TOTAL_AREA_PATTERNS, text)
-    if internal is None and total is None:
-        for match in _GENERIC_AREA_PATTERN.finditer(text):
-            prefix = text[max(0, match.start(1) - 24) : match.start(1)]
-            if _AREA_RANGE_PREFIX.search(prefix):
-                continue
-            value = _parse_area_number(match.group(1))
-            if value is not None and _valid_area(value):
-                total = value
-                break
-    return {
-        "internal_area_sqm": internal,
-        "external_area_sqm": external,
-        "total_area_sqm": total,
-    }
 
 
 def _extract_floor_level(text: str) -> int | None:
@@ -220,7 +132,11 @@ def _extract_legal(text: str, listing: ParsedListing) -> dict[str, Any]:
 
 def _extract_facts_from_regex(listing: ParsedListing, raw_text: str) -> dict[str, Any]:
     cleaned = clean_raw_text(raw_text)
-    areas = _extract_areas_from_text(cleaned)
+    areas = extract_areas_from_text(cleaned)
+    if listing.area_sqm is not None:
+        areas["internal_area_sqm"] = listing.area_sqm
+        if areas.get("total_area_sqm") is None:
+            areas["total_area_sqm"] = listing.area_sqm
     return {
         **areas,
         "floor_level": _extract_floor_level(cleaned),
@@ -242,7 +158,7 @@ def _coerce_int(value: Any) -> int | None:
         return None
     try:
         num = int(float(value))
-        return num if _valid_area(num) or 0 <= num <= 30 else None
+        return num if valid_area(num) or 0 <= num <= 30 else None
     except (TypeError, ValueError):
         return None
 

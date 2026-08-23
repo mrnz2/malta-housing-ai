@@ -1,7 +1,9 @@
 """Portal scrapers."""
 
 from malta_housing.scrapers.belair import run_belair_scraper
+from malta_housing.scrapers.dhalia import run_dhalia_scraper
 from malta_housing.scrapers.djar import run_djar_scraper
+from malta_housing.scrapers.excelhomes import run_excelhomes_scraper
 from malta_housing.scrapers.franksalt import run_franksalt_scraper
 from malta_housing.scrapers.maltapark import run_scraper
 from malta_housing.scrapers.ownersbest import run_ownersbest_scraper
@@ -24,4 +26,6 @@ __all__ = [
     "run_re316_scraper",
     "run_franksalt_scraper",
     "run_sensar_scraper",
+    "run_excelhomes_scraper",
+    "run_dhalia_scraper",
 ]

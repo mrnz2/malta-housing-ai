@@ -24,6 +24,8 @@ SourceType = Literal[
     "re316",
     "franksalt",
     "sensar",
+    "excelhomes",
+    "dhalia",
 ]
 
 
@@ -60,6 +62,10 @@ class MaltaPropertySchema(BaseModel):
         description="Canonical code: apartment, maisonette, penthouse, garage, etc.",
     )
     bedrooms: Optional[int] = Field(default=None, description="Liczba sypialni (int)")
+    area_sqm: Optional[int] = Field(
+        default=None,
+        description="Powierzchnia mieszkania w m² (internal jeśli podana, inaczej total). Null jeśli brak w tekście.",
+    )
     seller_type: Optional[SellerType] = Field(
         default=None,
         description="Wybierz dokładnie jeden: OWNER, AGENT, SENSAR, UNKNOWN",
@@ -153,7 +159,7 @@ class MaltaPropertySchema(BaseModel):
             self.key_features_pl = list(self.key_features_en)
         return self
 
-    @field_validator("price_eur", "bedrooms", mode="before")
+    @field_validator("price_eur", "bedrooms", "area_sqm", mode="before")
     @classmethod
     def coerce_int_fields(cls, v):
         if v is None:
@@ -172,6 +178,15 @@ class MaltaPropertySchema(BaseModel):
                 return round(float(cleaned))
             except ValueError:
                 return None
+        return v
+
+    @field_validator("area_sqm", mode="after")
+    @classmethod
+    def drop_implausible_area(cls, v):
+        if v is None:
+            return None
+        if v < 10 or v > 10_000:
+            return None
         return v
 
     @field_validator("is_freehold", "has_airspace", "has_sea_view", "is_shell_form", mode="before")

@@ -1082,8 +1082,18 @@ body.filters-open {
   margin: 0.45rem 0 0.65rem;
   font-size: 1.3rem;
   font-weight: 700;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.65rem 1rem;
   color: var(--sea-deep);
   font-variant-numeric: tabular-nums;
+}
+
+.detail-price-sqm {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--sea-deep);
 }
 
 .hover-tooltip {
@@ -1302,6 +1312,91 @@ body.filters-open {
   color: rgba(244, 248, 250, 0.78);
   font-size: 0.72rem;
   font-style: italic;
+}
+
+.locality-name {
+  display: inline;
+  cursor: help;
+  border-bottom: 1px dotted transparent;
+}
+
+.has-locality-map {
+  border-bottom-color: rgba(10, 107, 120, 0.35);
+}
+
+.has-locality-map:hover,
+.has-locality-map:focus-visible {
+  border-bottom-color: var(--sea-deep);
+}
+
+.locality-map-tooltip {
+  position: fixed;
+  z-index: 2000;
+  width: 220px;
+  padding: 0.55rem 0.6rem 0.6rem;
+  border-radius: 10px;
+  background: rgba(15, 35, 45, 0.96);
+  color: #f4f8fa;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+.locality-map-tooltip__title {
+  margin: 0 0 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.locality-map-tooltip__stage {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #c6ecff;
+  aspect-ratio: 773 / 719;
+}
+
+.locality-map-tooltip__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.locality-map-tooltip__svg #malta,
+.locality-map-tooltip__svg #gozo,
+.locality-map-tooltip__svg #comino,
+.locality-map-tooltip__svg #stpaul {
+  stroke: #c4b896;
+  stroke-width: 1.4;
+}
+
+.locality-map-marker__ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: locality-map-pulse 1.6s ease-out infinite;
+}
+
+.locality-map-marker__dot {
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+
+@keyframes locality-map-pulse {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.55);
+  }
+  70% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
 }
 
 .score-breakdown-grid {

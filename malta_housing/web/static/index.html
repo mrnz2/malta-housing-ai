@@ -51,16 +51,17 @@
           <thead>
             <tr>
               <th data-i18n="table.title">Title</th>
-              <th class="sortable-th" id="sort-score" data-sort="ai_score" data-i18n-title="table.score" title="Sort by AI score" data-i18n="table.score">Score</th>
-              <th data-i18n="table.locality">Locality</th>
-              <th data-i18n="table.gzira">→ Gżira</th>
+              <th class="sortable-th" id="sort-score" data-sort="ai_score" data-i18n-title="table.score" title="Score" data-i18n="table.score">Score</th>
+              <th class="sortable-th" data-sort="locality" data-i18n-title="table.locality" title="Locality" data-i18n="table.locality">Locality</th>
+              <th class="sortable-th" data-sort="gzira" data-i18n-title="table.gzira" title="→ Gżira" data-i18n="table.gzira">→ Gżira</th>
               <th data-i18n="table.sea">Sea</th>
-              <th data-i18n="table.price">Price</th>
-              <th data-i18n="table.priceSqm">€/m2</th>
-              <th data-i18n="table.beds">Beds</th>
-              <th data-i18n="table.source">Source</th>
-              <th data-i18n="table.ready">Ready</th>
-              <th data-i18n="table.fav">Fav</th>
+              <th class="sortable-th" data-sort="price" data-i18n-title="table.price" title="Price" data-i18n="table.price">Price</th>
+              <th class="sortable-th" data-sort="area_sqm" data-i18n-title="table.area" title="m²" data-i18n="table.area">m²</th>
+              <th class="sortable-th" data-sort="price_sqm" data-i18n-title="table.priceSqm" title="€/m2" data-i18n="table.priceSqm">€/m2</th>
+              <th class="sortable-th" data-sort="bedrooms" data-i18n-title="table.beds" title="Beds" data-i18n="table.beds">Beds</th>
+              <th class="sortable-th" data-sort="source" data-i18n-title="table.source" title="Source" data-i18n="table.source">Source</th>
+              <th class="sortable-th" data-sort="ready" data-i18n-title="table.ready" title="Ready" data-i18n="table.ready">Ready</th>
+              <th class="sortable-th" data-sort="fav" data-i18n-title="table.fav" title="Fav" data-i18n="table.fav">Fav</th>
               <th data-i18n="table.hide">Hide</th>
             </tr>
           </thead>
@@ -140,10 +141,23 @@
             <option value="updated_desc" data-i18n="sort.updated_desc">Recently updated</option>
             <option value="price_asc" data-i18n="sort.price_asc">Price ↑</option>
             <option value="price_desc" data-i18n="sort.price_desc">Price ↓</option>
+            <option value="price_sqm_asc" data-i18n="sort.price_sqm_asc">€/m² ↑</option>
+            <option value="price_sqm_desc" data-i18n="sort.price_sqm_desc">€/m² ↓</option>
+            <option value="area_sqm_desc" data-i18n="sort.area_sqm_desc">m² ↓</option>
+            <option value="area_sqm_asc" data-i18n="sort.area_sqm_asc">m² ↑</option>
             <option value="locality_asc" data-i18n="sort.locality_asc">Locality A–Z</option>
+            <option value="locality_desc" data-i18n="sort.locality_desc">Locality Z–A</option>
             <option value="title_asc" data-i18n="sort.title_asc">Title A–Z</option>
             <option value="gzira_asc" data-i18n="sort.gzira_asc">Distance to Gżira ↑</option>
             <option value="gzira_desc" data-i18n="sort.gzira_desc">Distance to Gżira ↓</option>
+            <option value="bedrooms_desc" data-i18n="sort.bedrooms_desc">Beds ↓</option>
+            <option value="bedrooms_asc" data-i18n="sort.bedrooms_asc">Beds ↑</option>
+            <option value="source_asc" data-i18n="sort.source_asc">Source A–Z</option>
+            <option value="source_desc" data-i18n="sort.source_desc">Source Z–A</option>
+            <option value="ready_desc" data-i18n="sort.ready_desc">Ready first</option>
+            <option value="ready_asc" data-i18n="sort.ready_asc">Not ready first</option>
+            <option value="fav_desc" data-i18n="sort.fav_desc">Favorites first</option>
+            <option value="fav_asc" data-i18n="sort.fav_asc">Favorites last</option>
             <option value="ai_score_desc" selected data-i18n="sort.ai_score_desc">New first, then AI score ↓</option>
             <option value="ai_score_asc" data-i18n="sort.ai_score_asc">AI score ↑</option>
           </select>
@@ -169,15 +183,19 @@
         <div class="detail-head-actions">
           <button type="button" class="fav-btn" id="detail-fav" data-i18n-aria="detail.favorite" aria-label="Favorite" aria-pressed="false">♡</button>
           <button type="button" class="btn ghost" id="detail-translate" data-i18n="detail.translate">Translate</button>
+          <button type="button" class="btn ghost" id="detail-reevaluate" data-i18n="detail.reevaluate">Re-evaluate AI</button>
           <button type="button" class="btn ghost" id="detail-edit-open" data-i18n="detail.edit">Edit</button>
           <button type="button" class="btn ghost detail-edit-only" id="detail-edit-cancel" data-i18n="detail.cancel" hidden>Cancel</button>
           <button type="button" class="btn primary detail-edit-only" id="detail-edit-save" data-i18n="detail.save" hidden>Save</button>
           <button type="button" class="btn ghost modal-close-btn" id="detail-close" data-i18n-aria="detail.close" aria-label="Close">×</button>
         </div>
       </header>
+      <p class="detail-link"><a id="detail-url" href="#" target="_blank" rel="noopener" data-i18n="detail.openListing">Open original listing ↗</a></p>
+
       <div id="detail-view">
       <p class="detail-price" id="detail-price-wrap">
         <span id="detail-price" class="detail-price-value" tabindex="0"></span>
+        <span id="detail-price-sqm" class="detail-price-sqm" hidden></span>
       </p>
       <section class="detail-evaluation" id="detail-evaluation" hidden>
         <p class="detail-score" id="detail-score-wrap">
@@ -210,7 +228,6 @@
       <button type="button" class="btn primary detail-notes-save" id="detail-notes-save" data-i18n="detail.saveNotes">Save notes</button>
       <p class="detail-notes-status" id="detail-notes-status" hidden></p>
       <dl class="detail-grid" id="detail-grid"></dl>
-      <p class="detail-link"><a id="detail-url" href="#" target="_blank" rel="noopener" data-i18n="detail.openListing">Open original listing ↗</a></p>
       </div>
 
       <form id="detail-edit-form" class="detail-edit" hidden>
@@ -231,6 +248,10 @@
           <label class="field">
             <span data-i18n="detail.bedrooms">Bedrooms</span>
             <input type="number" id="edit-bedrooms" min="0" step="1" />
+          </label>
+          <label class="field">
+            <span data-i18n="detail.area">Area (m²)</span>
+            <input type="number" id="edit-area-sqm" min="0" step="1" />
           </label>
         </div>
         <div class="detail-edit-row">

@@ -63,6 +63,11 @@ _NEW_FIRST_LIST_SQL = (
     f"CASE WHEN ({_FIRST_SEEN_DAY_LIST_SQL}) = date('now') THEN 0 ELSE 1 END"
 )
 
+_PRICE_SQM_MISSING_LIST = (
+    "CASE WHEN listings.price_eur IS NULL OR listings.area_sqm IS NULL "
+    "OR listings.area_sqm <= 0 THEN 1 ELSE 0 END"
+)
+
 _ORDER_SQL = {
     "created_desc": "CASE WHEN created_at IS NULL THEN 1 ELSE 0 END, created_at DESC, id DESC",
     "created_asc": "CASE WHEN created_at IS NULL THEN 1 ELSE 0 END, created_at ASC, id ASC",
@@ -71,9 +76,20 @@ _ORDER_SQL = {
     "price_asc": "CASE WHEN price_eur IS NULL THEN 1 ELSE 0 END, price_eur ASC, id DESC",
     "price_desc": "CASE WHEN price_eur IS NULL THEN 1 ELSE 0 END, price_eur DESC, id DESC",
     "locality_asc": "CASE WHEN locality IS NULL THEN 1 ELSE 0 END, locality COLLATE NOCASE ASC, id DESC",
+    "locality_desc": "CASE WHEN locality IS NULL THEN 1 ELSE 0 END, locality COLLATE NOCASE DESC, id DESC",
     "title_asc": "title COLLATE NOCASE ASC, id DESC",
     "gzira_asc": "CASE WHEN distance_to_gzira_km IS NULL THEN 1 ELSE 0 END, distance_to_gzira_km ASC, id DESC",
     "gzira_desc": "CASE WHEN distance_to_gzira_km IS NULL THEN 1 ELSE 0 END, distance_to_gzira_km DESC, id DESC",
+    "bedrooms_asc": "CASE WHEN bedrooms IS NULL THEN 1 ELSE 0 END, bedrooms ASC, id DESC",
+    "bedrooms_desc": "CASE WHEN bedrooms IS NULL THEN 1 ELSE 0 END, bedrooms DESC, id DESC",
+    "area_sqm_asc": "CASE WHEN area_sqm IS NULL THEN 1 ELSE 0 END, area_sqm ASC, id DESC",
+    "area_sqm_desc": "CASE WHEN area_sqm IS NULL THEN 1 ELSE 0 END, area_sqm DESC, id DESC",
+    "source_asc": "CASE WHEN source IS NULL THEN 1 ELSE 0 END, source COLLATE NOCASE ASC, id DESC",
+    "source_desc": "CASE WHEN source IS NULL THEN 1 ELSE 0 END, source COLLATE NOCASE DESC, id DESC",
+    "ready_asc": "CASE WHEN ready IS NULL THEN 1 ELSE 0 END, ready ASC, id DESC",
+    "ready_desc": "CASE WHEN ready IS NULL THEN 1 ELSE 0 END, ready DESC, id DESC",
+    "fav_asc": "COALESCE(is_fav, 0) ASC, id DESC",
+    "fav_desc": "COALESCE(is_fav, 0) DESC, id DESC",
     "ai_score_desc": (
         f"{_NEW_FIRST_SQL}, CASE WHEN ai_score IS NULL THEN 1 ELSE 0 END, "
         "ai_score DESC, id DESC"
@@ -109,9 +125,23 @@ _LIST_ORDER_SQL = {
         "CASE WHEN listings.price_eur IS NULL THEN 1 ELSE 0 END, "
         "listings.price_eur DESC, listings.id DESC"
     ),
+    "price_sqm_asc": (
+        f"{_PRICE_SQM_MISSING_LIST}, "
+        "CAST(listings.price_eur AS REAL) / listings.area_sqm ASC, "
+        "listings.id DESC"
+    ),
+    "price_sqm_desc": (
+        f"{_PRICE_SQM_MISSING_LIST}, "
+        "CAST(listings.price_eur AS REAL) / listings.area_sqm DESC, "
+        "listings.id DESC"
+    ),
     "locality_asc": (
         "CASE WHEN listings.locality IS NULL THEN 1 ELSE 0 END, "
         "listings.locality COLLATE NOCASE ASC, listings.id DESC"
+    ),
+    "locality_desc": (
+        "CASE WHEN listings.locality IS NULL THEN 1 ELSE 0 END, "
+        "listings.locality COLLATE NOCASE DESC, listings.id DESC"
     ),
     "title_asc": "listings.title COLLATE NOCASE ASC, listings.id DESC",
     "gzira_asc": (
@@ -122,6 +152,40 @@ _LIST_ORDER_SQL = {
         "CASE WHEN listings.distance_to_gzira_km IS NULL THEN 1 ELSE 0 END, "
         "listings.distance_to_gzira_km DESC, listings.id DESC"
     ),
+    "bedrooms_asc": (
+        "CASE WHEN listings.bedrooms IS NULL THEN 1 ELSE 0 END, "
+        "listings.bedrooms ASC, listings.id DESC"
+    ),
+    "bedrooms_desc": (
+        "CASE WHEN listings.bedrooms IS NULL THEN 1 ELSE 0 END, "
+        "listings.bedrooms DESC, listings.id DESC"
+    ),
+    "area_sqm_asc": (
+        "CASE WHEN listings.area_sqm IS NULL THEN 1 ELSE 0 END, "
+        "listings.area_sqm ASC, listings.id DESC"
+    ),
+    "area_sqm_desc": (
+        "CASE WHEN listings.area_sqm IS NULL THEN 1 ELSE 0 END, "
+        "listings.area_sqm DESC, listings.id DESC"
+    ),
+    "source_asc": (
+        "CASE WHEN listings.source IS NULL THEN 1 ELSE 0 END, "
+        "listings.source COLLATE NOCASE ASC, listings.id DESC"
+    ),
+    "source_desc": (
+        "CASE WHEN listings.source IS NULL THEN 1 ELSE 0 END, "
+        "listings.source COLLATE NOCASE DESC, listings.id DESC"
+    ),
+    "ready_asc": (
+        "CASE WHEN listings.ready IS NULL THEN 1 ELSE 0 END, "
+        "listings.ready ASC, listings.id DESC"
+    ),
+    "ready_desc": (
+        "CASE WHEN listings.ready IS NULL THEN 1 ELSE 0 END, "
+        "listings.ready DESC, listings.id DESC"
+    ),
+    "fav_asc": "COALESCE(listings.is_fav, 0) ASC, listings.id DESC",
+    "fav_desc": "COALESCE(listings.is_fav, 0) DESC, listings.id DESC",
     "ai_score_desc": (
         f"{_NEW_FIRST_LIST_SQL}, CASE WHEN listings.ai_score IS NULL THEN 1 ELSE 0 END, "
         "listings.ai_score DESC, listings.id DESC"
@@ -134,7 +198,7 @@ _LIST_ORDER_SQL = {
 
 _LISTING_COLUMNS = """
     id, url, title, title_en, title_pl, price_eur, locality, property_type, bedrooms,
-    seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form, ready,
+    area_sqm, seller_type, is_freehold, has_airspace, has_sea_view, is_shell_form, ready,
     key_features, key_features_en, key_features_pl,
     source, scraped_at, created_at, updated_at,
     distance_to_gzira_km, is_hidden, is_fav, notes,
@@ -144,13 +208,27 @@ _LISTING_COLUMNS = """
 _LISTING_COLUMNS_QUALIFIED = """
     listings.id, listings.url, listings.title, listings.title_en, listings.title_pl,
     listings.price_eur, listings.locality, listings.property_type, listings.bedrooms,
-    listings.seller_type, listings.is_freehold, listings.has_airspace, listings.has_sea_view,
+    listings.area_sqm, listings.seller_type, listings.is_freehold, listings.has_airspace,
+    listings.has_sea_view,
     listings.is_shell_form, listings.ready, listings.key_features, listings.key_features_en,
     listings.key_features_pl, listings.source, listings.scraped_at, listings.created_at,
     listings.updated_at, listings.distance_to_gzira_km, listings.is_hidden, listings.is_fav,
     listings.notes, listings.ai_score, listings.ai_summary, listings.ai_summary_en,
     listings.ai_summary_pl, listings.ai_evaluated_at, listings.sea_proximity
 """
+
+
+def _compute_price_per_sqm(price_eur: Any, area_sqm: Any) -> float | None:
+    if price_eur is None or area_sqm is None:
+        return None
+    try:
+        price = float(price_eur)
+        area = float(area_sqm)
+    except (TypeError, ValueError):
+        return None
+    if area <= 0:
+        return None
+    return round(price / area, 2)
 
 
 def _row_to_listing(row: sqlite3.Row) -> dict[str, Any]:
@@ -171,15 +249,14 @@ def _row_to_listing(row: sqlite3.Row) -> dict[str, Any]:
             data[flag] = False
     if "ready" in data and data["ready"] is not None:
         data["ready"] = bool(data["ready"])
-    if "price_per_sqm" in data:
-        raw = data["price_per_sqm"]
-        if raw is None:
-            pass
-        else:
-            try:
-                data["price_per_sqm"] = round(float(raw), 2)
-            except (TypeError, ValueError):
-                data["price_per_sqm"] = None
+    if "area_sqm" in data and data["area_sqm"] is not None:
+        try:
+            data["area_sqm"] = int(round(float(data["area_sqm"])))
+        except (TypeError, ValueError):
+            data["area_sqm"] = None
+    data["price_per_sqm"] = _compute_price_per_sqm(
+        data.get("price_eur"), data.get("area_sqm")
+    )
     _parse_evaluation_summary(data)
     return data
 
@@ -436,7 +513,6 @@ def list_listings(
             f"""
             SELECT
                 {_LISTING_COLUMNS_QUALIFIED},
-                json_extract(e.evaluation_json, '$.metrics.price_per_sqm') AS price_per_sqm,
                 json_extract(e.evaluation_json, '$.base_score') AS base_score,
                 json_extract(e.evaluation_json, '$.qualitative_adjustment') AS qualitative_adjustment,
                 json_extract(e.evaluation_json, '$.score_breakdown') AS score_breakdown
@@ -593,9 +669,10 @@ def _enrich_with_evaluation(row: dict[str, Any]) -> dict[str, Any]:
                 "buyer_warnings_en",
                 "valuation_facts",
             ):
-                if key in evaluation and key not in row:
+                if key in evaluation:
                     row[key] = evaluation[key]
     row.pop("evaluation_json", None)
+    _parse_evaluation_summary(row)
     return row
 
 
@@ -641,6 +718,34 @@ def get_ranked_listings(
         items = []
     conn.close()
     return items
+
+
+def get_listing_core_row(
+    listing_id: int, db_name: str | Path = DB_PATH
+) -> dict[str, Any] | None:
+    """Listing table row only (no evaluation join) — input for AI re-evaluation."""
+    if not Path(db_name).exists():
+        return None
+    conn = _connect(db_name)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"""
+            SELECT
+                {_LISTING_COLUMNS}
+            FROM listings
+            WHERE id = ?
+            """,
+            (listing_id,),
+        )
+        row = cur.fetchone()
+    except sqlite3.OperationalError:
+        conn.close()
+        return None
+    conn.close()
+    if not row:
+        return None
+    return _row_to_listing(row)
 
 
 def get_price_history(listing_id: int, db_name: str | Path = DB_PATH) -> list[dict[str, Any]]:

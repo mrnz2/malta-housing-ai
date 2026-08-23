@@ -8,12 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from malta_housing.budget import MAX_PRICE_EUR, MIN_PRICE_EUR, is_out_of_budget
-from malta_housing.common import PARSED_PATH, load_json_list, purge_hidden_from_json, resolve_source
+from malta_housing.common import PARSED_PATH, STAGING_PATH, load_json_list, purge_hidden_from_json, resolve_source
 from malta_housing.distances import distance_to_gzira_km, sea_proximity_for
 from malta_housing.geo import is_gozo_record
 from malta_housing.i18n.localize import normalize_locale
 from malta_housing.i18n.property_types import normalize_property_type
 from malta_housing.models import utc_now_iso
+from malta_housing.parsing.area import area_sqm_from_text
 from malta_housing.paths import DB_PATH, ensure_data_dir
 
 _LISTINGS_I18N_COLUMNS = (
@@ -96,6 +97,7 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
         ("ai_evaluated_at", "TIMESTAMP"),
         ("ready", "BOOLEAN"),
         ("is_fav", "BOOLEAN DEFAULT 0"),
+        ("area_sqm", "INTEGER"),
     ):
         _ensure_column(cursor, "listings", column, col_def)
 
@@ -144,6 +146,7 @@ def init_db(db_name: str | Path = DB_PATH) -> None:
     _backfill_listing_scores(conn)
     _backfill_bilingual_columns(conn)
     _backfill_property_type_codes(conn)
+    _backfill_area_sqm(conn)
     conn.close()
 
 
@@ -168,6 +171,158 @@ def _backfill_property_type_codes(conn: sqlite3.Connection) -> None:
     if updated:
         conn.commit()
         print(f"🏷️ Znormalizowano property_type dla {updated} ofert.")
+
+
+def _coerce_area_sqm(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        area = int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+    if area < 10 or area > 10_000:
+        return None
+    return area
+
+
+def _area_from_evaluation(evaluation: dict[str, Any] | None) -> int | None:
+    if not evaluation:
+        return None
+    metrics = evaluation.get("metrics") if isinstance(evaluation.get("metrics"), dict) else {}
+    facts = (
+        evaluation.get("valuation_facts")
+        if isinstance(evaluation.get("valuation_facts"), dict)
+        else {}
+    )
+    for raw in (
+        metrics.get("area_sqm"),
+        facts.get("internal_area_sqm"),
+        facts.get("total_area_sqm"),
+    ):
+        area = _coerce_area_sqm(raw)
+        if area is not None:
+            return area
+    return None
+
+
+def backfill_area_sqm(
+    conn: sqlite3.Connection | None = None,
+    *,
+    db_name: str | Path = DB_PATH,
+) -> dict[str, int]:
+    """Fill listings.area_sqm from scraped listing text (regex on raw_text).
+
+    Prefers area parsed from staging JSON; falls back to evaluation metrics when
+    staging text is missing. Never clears an existing non-null area_sqm.
+    """
+    own_conn = conn is None
+    if own_conn:
+        ensure_data_dir()
+        conn = sqlite3.connect(str(db_name))
+        conn.row_factory = sqlite3.Row
+
+    cursor = conn.cursor()
+    stats = {
+        "total": 0,
+        "updated": 0,
+        "from_text": 0,
+        "from_evaluation": 0,
+        "already_set": 0,
+        "still_missing": 0,
+        "no_staging_text": 0,
+    }
+    try:
+        cursor.execute("SELECT id, url, area_sqm FROM listings")
+        rows = cursor.fetchall()
+    except sqlite3.OperationalError:
+        if own_conn:
+            conn.close()
+        return stats
+
+    staged = {
+        item["url"]: item.get("raw_text") or ""
+        for item in load_json_list(STAGING_PATH)
+        if isinstance(item, dict) and item.get("url")
+    }
+
+    eval_areas: dict[str, int] = {}
+    try:
+        cursor.execute(
+            """
+            SELECT url,
+                   json_extract(evaluation_json, '$.metrics.area_sqm') AS metrics_area,
+                   json_extract(evaluation_json, '$.valuation_facts.internal_area_sqm') AS internal_area,
+                   json_extract(evaluation_json, '$.valuation_facts.total_area_sqm') AS total_area
+            FROM evaluations
+            """
+        )
+        for row in cursor.fetchall():
+            area = (
+                _coerce_area_sqm(row["metrics_area"])
+                or _coerce_area_sqm(row["internal_area"])
+                or _coerce_area_sqm(row["total_area"])
+            )
+            if area is not None:
+                eval_areas[row["url"]] = area
+    except sqlite3.OperationalError:
+        pass
+
+    stats["total"] = len(rows)
+    for row in rows:
+        url = row["url"]
+        current = _coerce_area_sqm(row["area_sqm"])
+        raw_text = staged.get(url, "")
+        if not raw_text.strip():
+            stats["no_staging_text"] += 1
+
+        desired: int | None = None
+        source: str | None = None
+
+        if raw_text.strip():
+            from_text = area_sqm_from_text(raw_text)
+            if from_text is not None:
+                desired = from_text
+                source = "text"
+
+        if desired is None and current is None:
+            eval_area = eval_areas.get(url)
+            if eval_area is not None:
+                desired = eval_area
+                source = "evaluation"
+
+        if desired is None:
+            if current is not None:
+                stats["already_set"] += 1
+            else:
+                stats["still_missing"] += 1
+            continue
+
+        if desired == current:
+            stats["already_set"] += 1
+            continue
+
+        cursor.execute(
+            "UPDATE listings SET area_sqm = ? WHERE id = ?",
+            (desired, row["id"]),
+        )
+        stats["updated"] += 1
+        if source == "text":
+            stats["from_text"] += 1
+        elif source == "evaluation":
+            stats["from_evaluation"] += 1
+
+    if stats["updated"]:
+        conn.commit()
+
+    if own_conn:
+        conn.close()
+    return stats
+
+
+def _backfill_area_sqm(conn: sqlite3.Connection) -> None:
+    stats = backfill_area_sqm(conn)
+    if stats["updated"]:
+        print(f"📐 Uzupełniono/poprawiono area_sqm dla {stats['updated']} ofert.")
 
 
 def _json_list_text(value: Any) -> str | None:
@@ -661,6 +816,9 @@ def update_listing_editable(
             else:
                 add_listing("bedrooms", int(bedrooms))
 
+        if "area_sqm" in fields:
+            add_listing("area_sqm", _coerce_area_sqm(fields["area_sqm"]))
+
         if "seller_type" in fields:
             add_listing("seller_type", _clean_text(fields["seller_type"]))
 
@@ -780,6 +938,8 @@ def save_listings_to_db(
         if ready is not None:
             ready = bool(ready)
 
+        area_sqm = _coerce_area_sqm(item.get("area_sqm"))
+
         values = (
             title_en,
             title_en,
@@ -788,6 +948,7 @@ def save_listings_to_db(
             item.get("locality"),
             property_type,
             item.get("bedrooms"),
+            area_sqm,
             item.get("seller_type"),
             item.get("is_freehold", False),
             item.get("has_airspace", False),
@@ -810,12 +971,12 @@ def save_listings_to_db(
                 """
                 INSERT INTO listings (
                     title, title_en, title_pl, price_eur, locality, property_type,
-                    bedrooms, seller_type, is_freehold, has_airspace,
+                    bedrooms, area_sqm, seller_type, is_freehold, has_airspace,
                     has_sea_view, is_shell_form, ready,
                     key_features, key_features_en, key_features_pl,
                     source, scraped_at, updated_at,
                     distance_to_gzira_km, sea_proximity, url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 values,
             )
@@ -851,6 +1012,7 @@ def save_listings_to_db(
                     locality = ?,
                     property_type = ?,
                     bedrooms = ?,
+                    area_sqm = COALESCE(?, area_sqm),
                     seller_type = ?,
                     is_freehold = ?,
                     has_airspace = ?,
@@ -1005,10 +1167,10 @@ def save_evaluation(
         """
         UPDATE listings
         SET ai_score = ?, ai_summary = ?, ai_summary_en = ?, ai_summary_pl = ?,
-            ai_evaluated_at = ?
+            ai_evaluated_at = ?, area_sqm = COALESCE(?, area_sqm)
         WHERE url = ?
         """,
-        (score, summary_en, summary_en, summary_pl, now, url),
+        (score, summary_en, summary_en, summary_pl, now, _area_from_evaluation(evaluation), url),
     )
     conn.commit()
     conn.close()

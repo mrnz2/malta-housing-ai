@@ -29,6 +29,7 @@ from malta_housing.db.store import get_hidden_urls, get_known_urls
 from malta_housing.distances import distance_to_gzira_km, sea_proximity_for
 from malta_housing.geo import is_gozo_record
 from malta_housing.models import MaltaPropertySchema, ParsedListing, utc_now_iso
+from malta_housing.parsing.area import area_sqm_from_text
 from malta_housing.scrapers.propertymarket import apply_propertymarket_price_correction
 
 CHECKPOINT_EVERY = 5
@@ -54,6 +55,9 @@ def parse_with_llm(raw_listing: dict) -> MaltaPropertySchema:
       (np. dla "€ 650,000" wpisz 650000). NIE wpisuj ceny za m² ani ułamków.
       Jeśli jest podana opcjonalna cena garażu, ignoruj ją i weź główną cenę nieruchomości.
     - locality: Tylko miejscowość na Malcie (wyspa główna). Jeśli oferta jest na Gozo, i tak wpisz nazwę miejscowości (np. "Xewkija (Gozo)") — filtr Gozo działa osobno.
+    - bedrooms: liczba sypialni jako liczba całkowita, null jeśli brak.
+    - area_sqm: powierzchnia mieszkania w m² jako liczba całkowita (internal jeśli podana,
+      inaczej total / "Area m2"). null jeśli tekst nie podaje metrażu. NIE zgaduj i nie licz z ceny.
     - seller_type: Jeśli widzisz "OWNER" wpisz "OWNER". Jeśli "AGENT" lub nazwy agencji (np. ReMax) wpisz "AGENT". Jeśli "BROKER (SENSAR)" wpisz "SENSAR".
     - Wartości boolean (is_freehold, has_airspace, has_sea_view, is_shell_form) MUSZĄ być ustawione na true lub false (NIGDY null).
     - ready: true jeśli mieszkanie jest gotowe do zamieszkania (np. "ready to move in", "fully finished",
@@ -76,6 +80,7 @@ def parse_with_llm(raw_listing: dict) -> MaltaPropertySchema:
         "locality": "string lub null",
         "property_type": "apartment",
         "bedrooms": 2,
+        "area_sqm": 95,
         "seller_type": "OWNER/AGENT/SENSAR/UNKNOWN",
         "is_freehold": false,
         "has_airspace": false,
@@ -106,6 +111,14 @@ def parse_with_llm(raw_listing: dict) -> MaltaPropertySchema:
             last_error = exc
             print(f"   └─ Próba {attempt}/{LLM_RETRIES} nieudana: {exc}")
     raise RuntimeError(f"LLM parse failed after {LLM_RETRIES} attempts: {last_error}")
+
+
+def _merge_area_sqm(result_dict: dict[str, Any], raw_text: str | None) -> dict[str, Any]:
+    """Prefer regex area from listing text over LLM guesses."""
+    regex_area = area_sqm_from_text(raw_text)
+    if regex_area is not None:
+        result_dict["area_sqm"] = regex_area
+    return result_dict
 
 
 def _quality_null_counts(items: list[dict[str, Any]]) -> dict[str, int]:
@@ -161,6 +174,7 @@ def parse_staged_item(
         sea_proximity=sea_proximity_for(parsed_data.locality),
     )
     result_dict = result.model_dump()
+    result_dict = _merge_area_sqm(result_dict, item.get("raw_text"))
     if source == "propertymarket":
         result_dict = apply_propertymarket_price_correction(
             result_dict,
@@ -282,6 +296,7 @@ def run_parser(
                 sea_proximity=sea_proximity_for(parsed_data.locality),
             )
             result_dict = result.model_dump()
+            result_dict = _merge_area_sqm(result_dict, item.get("raw_text"))
             source = resolve_source(item.get("source"), item["url"])
             if source == "propertymarket":
                 result_dict = apply_propertymarket_price_correction(
@@ -308,6 +323,7 @@ def run_parser(
             sea_txt = f", morze: {sea}" if sea else ""
             print(
                 f"   └─ Sukces! Cena: €{result_dict.get('price_eur')}, "
+                f"m²: {result_dict.get('area_sqm') if result_dict.get('area_sqm') is not None else '?'}, "
                 f"Sprzedawca: {result_dict.get('seller_type')}, "
                 f"Freehold: {result_dict.get('is_freehold')}, Airspace: {result_dict.get('has_airspace')}, "
                 f"Ready: {result_dict.get('ready')}"

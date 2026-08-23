@@ -8,8 +8,19 @@ from typing import Any
 
 from malta_housing.analysis.evaluator import evaluate_listing
 from malta_housing.common import STAGING_PATH, load_json_list
-from malta_housing.db.store import get_evaluated_urls, get_hidden_urls, init_db, save_evaluation
-from malta_housing.db.queries import get_latest_scrape_day, get_rank_candidates
+from malta_housing.db.store import (
+    get_evaluated_urls,
+    get_hidden_urls,
+    init_db,
+    save_evaluation,
+    update_listing_editable,
+)
+from malta_housing.db.queries import (
+    get_latest_scrape_day,
+    get_listing_core_row,
+    get_rank_candidates,
+)
+from malta_housing.i18n.localize import normalize_locale
 from malta_housing.models import ParsedListing
 from malta_housing.paths import DB_PATH
 
@@ -49,6 +60,7 @@ def _listing_to_parsed(row: dict[str, Any]) -> ParsedListing:
         "locality",
         "property_type",
         "bedrooms",
+        "area_sqm",
         "seller_type",
         "is_freehold",
         "has_airspace",
@@ -251,6 +263,35 @@ def _filter_latest_scrape(candidates: list[dict[str, Any]], latest_day: str | No
         for row in candidates
         if row.get("scraped_at") and str(row["scraped_at"])[:10] == latest_day
     ]
+
+
+def reevaluate_listing_by_id(
+    listing_id: int,
+    *,
+    fields: dict[str, Any] | None = None,
+    locale: str = "en",
+    db_name: str | Any = DB_PATH,
+) -> dict[str, Any]:
+    """Re-run hybrid AI evaluation for one listing (current DB fields + staged raw_text)."""
+    init_db(db_name)
+    loc = normalize_locale(locale)
+    if fields:
+        if not update_listing_editable(listing_id, locale=loc, fields=fields, db_name=db_name):
+            raise LookupError("Listing not found")
+
+    row = get_listing_core_row(listing_id, db_name=db_name)
+    if row is None:
+        raise LookupError("Listing not found")
+
+    url = row["url"]
+    raw_text = _load_raw_text_by_url().get(url, "")
+    if not raw_text.strip():
+        raise ValueError("no_raw_text")
+
+    listing = _listing_to_parsed(row)
+    result = evaluate_listing(listing, raw_text)
+    save_evaluation(url, result, db_name=db_name)
+    return result
 
 
 def run_rank(

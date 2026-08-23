@@ -6,7 +6,9 @@ import argparse
 import sys
 
 from malta_housing.common import configure_stdio, ensure_source
+from malta_housing.db.dhalia_urls import backfill_dhalia_urls
 from malta_housing.db.store import (
+    backfill_area_sqm,
     clear_evaluations,
     delete_gozo_listings,
     delete_out_of_budget_listings,
@@ -16,7 +18,9 @@ from malta_housing.db.store import (
 from malta_housing.parsing.llm import run_parser
 from malta_housing.paths import DB_PATH
 from malta_housing.scrapers.belair import run_belair_scraper
+from malta_housing.scrapers.dhalia import run_dhalia_scraper
 from malta_housing.scrapers.djar import run_djar_scraper
+from malta_housing.scrapers.excelhomes import run_excelhomes_scraper
 from malta_housing.scrapers.franksalt import run_franksalt_scraper
 from malta_housing.scrapers.maltapark import run_scraper
 from malta_housing.scrapers.ownersbest import run_ownersbest_scraper
@@ -35,6 +39,28 @@ from malta_housing.web.server import run_server
 def cmd_init_db(_args: argparse.Namespace) -> None:
     init_db()
     print(f"✅ Schema ready in {DB_PATH}")
+
+
+def cmd_backfill_dhalia_urls(args: argparse.Namespace) -> None:
+    stats = backfill_dhalia_urls(dry_run=args.dry_run)
+    mode = "DRY-RUN" if args.dry_run else "DONE"
+    print(f"🔗 [{mode}] Dhalia URL backfill")
+    print(f"   total={stats['total']} updated={stats['updated']} already_ok={stats['already_ok']}")
+    print(
+        f"   duplicates_removed={stats['duplicates_removed']} "
+        f"no_ref={stats['no_ref']} api_failed={stats['api_failed']}"
+    )
+    print(f"   json: staging={stats['json_staging']} parsed={stats['json_parsed']}")
+
+
+def cmd_backfill_area(_args: argparse.Namespace) -> None:
+    stats = backfill_area_sqm(db_name=DB_PATH)
+    print(
+        f"📐 Backfill area_sqm: updated={stats['updated']} "
+        f"(from text={stats['from_text']}, from evaluation={stats['from_evaluation']}), "
+        f"already set={stats['already_set']}, still missing={stats['still_missing']}, "
+        f"no staging text={stats['no_staging_text']}, total listings={stats['total']}"
+    )
 
 
 def cmd_scrape(args: argparse.Namespace) -> None:
@@ -59,6 +85,10 @@ def cmd_scrape(args: argparse.Namespace) -> None:
         run_franksalt_scraper(max_pages=5 if args.pages == 3 else args.pages)
     elif source == "sensar":
         run_sensar_scraper(max_pages=5 if args.pages == 3 else args.pages)
+    elif source == "excelhomes":
+        run_excelhomes_scraper(max_pages=args.pages)
+    elif source == "dhalia":
+        run_dhalia_scraper(max_pages=args.pages)
     else:
         run_djar_scraper(max_pages=args.pages)
 
@@ -176,6 +206,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_init = sub.add_parser("init-db", help="Create/migrate SQLite schema only")
     p_init.set_defaults(func=cmd_init_db)
 
+    p_backfill_area = sub.add_parser(
+        "backfill-area",
+        help="Fill listings.area_sqm from scraped listing text (scraped_listings.json)",
+    )
+    p_backfill_area.set_defaults(func=cmd_backfill_area)
+
+    p_backfill_dhalia = sub.add_parser(
+        "backfill-dhalia-urls",
+        help="Rewrite legacy Dhalia property?ref= URLs to canonical /buy/.../Ref paths",
+    )
+    p_backfill_dhalia.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show planned changes without writing DB/JSON",
+    )
+    p_backfill_dhalia.set_defaults(func=cmd_backfill_dhalia_urls)
+
     p_scrape = sub.add_parser("scrape", help="Scrape a portal into scraped_listings.json (merge)")
     p_scrape.add_argument(
         "--source",
@@ -192,6 +239,8 @@ def build_parser() -> argparse.ArgumentParser:
             "re316",
             "franksalt",
             "sensar",
+            "excelhomes",
+            "dhalia",
         ],
         help="Portal to scrape",
     )
@@ -225,6 +274,8 @@ def build_parser() -> argparse.ArgumentParser:
             "re316",
             "franksalt",
             "sensar",
+            "excelhomes",
+            "dhalia",
         ],
         help="Portal to scrape",
     )
@@ -315,6 +366,8 @@ def build_parser() -> argparse.ArgumentParser:
             "re316",
             "franksalt",
             "sensar",
+            "excelhomes",
+            "dhalia",
         ],
         help="Only evaluate listings from this portal (default: all sources)",
     )

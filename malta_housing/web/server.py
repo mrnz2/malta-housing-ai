@@ -15,6 +15,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from malta_housing.common import configure_stdio
 from malta_housing.db import queries
+from malta_housing.distances import locality_coords_payload
+from malta_housing.web.map_svg import cleaned_map_svg
 from malta_housing.db.store import (
     init_db,
     set_listing_fav,
@@ -24,6 +26,7 @@ from malta_housing.db.store import (
     update_listing_editable,
 )
 from malta_housing.i18n.localize import normalize_locale
+from malta_housing.analysis.ranker import reevaluate_listing_by_id
 from malta_housing.i18n.translate import run_translate
 from malta_housing.manual_import import run_manual_pipeline
 from malta_housing.paths import DB_PATH, PACKAGE_ROOT
@@ -168,6 +171,16 @@ class BrowseHandler(BaseHTTPRequestHandler):
 
         if path in {"/", "/index.html"}:
             self._serve_file(STATIC_DIR / "index.html")
+            return
+        if path in {"/map.svg", "/static/map.svg"}:
+            svg = cleaned_map_svg()
+            if svg is None:
+                self._send(*_json_bytes({"error": "Map SVG not found"}, 404))
+                return
+            self._send(200, svg, "image/svg+xml; charset=utf-8")
+            return
+        if path == "/api/localities":
+            self._send(*_json_bytes(locality_coords_payload()))
             return
         if path.startswith("/static/"):
             rel = path[len("/static/") :]
@@ -392,6 +405,65 @@ class BrowseHandler(BaseHTTPRequestHandler):
                 return
             listing = queries.get_listing(listing_id, locale=locale)
             self._send(*_json_bytes(listing or {"id": listing_id}))
+            return
+
+        match_evaluate = re.fullmatch(r"/api/listings/(\d+)/evaluate", path)
+        if match_evaluate:
+            listing_id = int(match_evaluate.group(1))
+            listing = queries.get_listing(listing_id)
+            if listing is None:
+                self._send(*_json_bytes({"error": "Listing not found"}, 404))
+                return
+            locale = _parse_locale(qs, self.headers.get("Accept-Language"))
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length > 0 else b"{}"
+            try:
+                body = json.loads(raw.decode("utf-8") or "{}")
+            except json.JSONDecodeError:
+                self._send(*_json_bytes({"error": "Invalid JSON"}, 400))
+                return
+            fields = body.get("fields")
+            if fields is not None and not isinstance(fields, dict):
+                self._send(*_json_bytes({"error": "Missing 'fields' object"}, 400))
+                return
+            body_locale = normalize_locale(body.get("locale") or locale)
+            try:
+                result = reevaluate_listing_by_id(
+                    listing_id,
+                    fields=fields,
+                    locale=body_locale,
+                )
+            except ValueError as exc:
+                if str(exc) == "no_raw_text":
+                    self._send(
+                        *_json_bytes(
+                            {"error": "no_raw_text", "message": str(exc)},
+                            400,
+                        )
+                    )
+                    return
+                self._send(*_json_bytes({"error": str(exc)}, 400))
+                return
+            except LookupError:
+                self._send(*_json_bytes({"error": "Listing not found"}, 404))
+                return
+            except Exception as exc:
+                self._send(*_json_bytes({"error": str(exc)}, 500))
+                return
+            updated = queries.get_listing(listing_id, locale=locale)
+            self._send(
+                *_json_bytes(
+                    {
+                        "listing": updated,
+                        "evaluation": {
+                            "investment_score": result.get("investment_score"),
+                            "base_score": result.get("base_score"),
+                            "qualitative_adjustment": result.get("qualitative_adjustment"),
+                        },
+                        "message": "ok",
+                    }
+                )
+            )
             return
 
         match_translate = re.fullmatch(r"/api/listings/(\d+)/translate", path)

@@ -13,6 +13,14 @@ from malta_housing.paths import PROJECT_ROOT
 
 GZIRA_CSV_PATH = PROJECT_ROOT / "to_gzira.csv"
 
+# Equirectangular extent of map.svg (N 36°06', S 35°47', W 14°10', E 14°36').
+MAP_BOUNDS: dict[str, float] = {
+    "minLat": 35.7833,
+    "maxLat": 36.10,
+    "minLng": 14.1667,
+    "maxLng": 14.60,
+}
+
 SeaProximity = Literal["nad_morzem", "blisko", "daleko"]
 
 
@@ -22,6 +30,12 @@ class LocalityProfile(TypedDict):
     region: str | None
     eur_per_sqm_min: float | None
     eur_per_sqm_max: float | None
+
+
+class LocalityCoords(TypedDict):
+    name: str
+    lat: float
+    lng: float
 
 
 # Common scraper/LLM locality spellings → CSV town keys (normalized).
@@ -147,6 +161,15 @@ def resolve_base_rate(
     return interpolate_rate(min_rate, max_rate, position)
 
 
+def _parse_coord(value: str | None) -> float | None:
+    if value is None or not str(value).strip():
+        return None
+    try:
+        return float(str(value).strip().replace(",", "."))
+    except ValueError:
+        return None
+
+
 def _parse_km(value: str) -> float | None:
     match = re.search(r"([\d]+(?:[.,]\d+)?)", value.replace(",", "."))
     if not match:
@@ -244,6 +267,49 @@ def load_locality_profiles(csv_path: str | None = None) -> dict[str, LocalityPro
 def load_gzira_distances(csv_path: str | None = None) -> dict[str, float]:
     """Map normalized locality name → distance km to Gżira."""
     return {key: profile["gzira_km"] for key, profile in load_locality_profiles(csv_path).items()}
+
+
+@lru_cache(maxsize=1)
+def load_locality_coords(csv_path: str | None = None) -> dict[str, LocalityCoords]:
+    """Map normalized locality name → lat/lng from to_gzira.csv (incl. aliases)."""
+    path = Path(csv_path) if csv_path else GZIRA_CSV_PATH
+    mapping: dict[str, LocalityCoords] = {}
+    if not path.exists():
+        print(f"⚠️ Brak pliku odległości: {path}")
+        return mapping
+
+    with path.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            locality = (row.get("Miejscowość") or row.get("locality") or "").strip()
+            lat = _parse_coord(
+                row.get("Szerokość geograficzna")
+                or row.get("Szerokosc geograficzna")
+                or row.get("latitude")
+                or row.get("lat")
+            )
+            lng = _parse_coord(
+                row.get("Długość geograficzna")
+                or row.get("Dlugosc geograficzna")
+                or row.get("longitude")
+                or row.get("lng")
+            )
+            if not locality or lat is None or lng is None:
+                continue
+            coords: LocalityCoords = {"name": locality, "lat": lat, "lng": lng}
+            for key in _csv_key_variants(locality):
+                mapping[key] = coords
+
+    for alias, canonical in _ALIASES.items():
+        if alias not in mapping and canonical in mapping:
+            mapping[alias] = mapping[canonical]
+    return mapping
+
+
+def locality_coords_payload(csv_path: str | None = None) -> dict[str, object]:
+    """JSON payload for the map tooltip: lookup table + projection bounds."""
+    lookup = load_locality_coords(csv_path)
+    return {"lookup": lookup, "bounds": dict(MAP_BOUNDS)}
 
 
 def _candidate_tokens(locality: str) -> list[str]:

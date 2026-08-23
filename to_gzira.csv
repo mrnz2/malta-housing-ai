@@ -1,55 +1,55 @@
-﻿Miejscowość,Region,Odległość do Gżiry,Dystans do morza,Szacowana stawka €/m2
-Attard,Centralny,6 km,daleko,2900 - 4100
-Balzan,Centralny,5 km,daleko,3000 - 4200
-Birgu (Vittoriosa),Południowo-wschodni (Trzy Miasta),8 km,nad morzem,3200 - 5000
-Birkirkara,Centralny,4 km,daleko,2500 - 3600
-Birżebbuġa,Południowy,12 km,nad morzem,2000 - 3000
-Bormla (Cospicua),Południowo-wschodni (Trzy Miasta),7.5 km,nad morzem,2700 - 4200
-Dingli,Zachodni,14 km,blisko,2400 - 3500
-Fgura,Południowo-wschodni,7 km,blisko,2100 - 3100
-Floriana,Południowo-wschodni (Sąsiedztwo Valletty),4 km,nad morzem,3400 - 5200
-Gudja,Południowy,8.5 km,daleko,2100 - 3100
-Gżira,Północny Harbour,0 km,nad morzem,3600 - 5200
-Għaxaq,Południowy,9 km,daleko,2000 - 2900
-Ħamrun,Południowo-wschodni,4 km,blisko,2200 - 3200
-Iklin,Centralny,5 km,daleko,2800 - 3900
-Kalkara,Południowo-wschodni,8 km,nad morzem,2800 - 4300
-Kirkop,Południowy,9.5 km,daleko,2000 - 2900
-Lija,Centralny,5 km,daleko,3100 - 4400
-Luqa,Południowy,7.5 km,daleko,2100 - 3100
-Marsa,Południowo-wschodni,5 km,nad morzem,1900 - 2800
-Marsaskala,Południowo-wschodni,11.5 km,nad morzem,2300 - 3400
-Marsaxlokk,Południowo-wschodni,12 km,nad morzem,2600 - 3800
-Mdina,Zachodni,10.5 km,daleko,4500 - 7500
-Mellieħa,Północny,18.5 km,nad morzem,2800 - 4500
-Mġarr,Północny,14.5 km,blisko,2500 - 3600
-Mosta,Północny,7 km,daleko,2700 - 3800
-Mqabba,Południowy,10 km,daleko,2000 - 2900
-Msida,Północny Harbour,1.2 km,blisko,3100 - 4400
-Mtarfa,Zachodni,11.5 km,daleko,2300 - 3200
-Naxxar,Północny,6 km,blisko,2800 - 4200
-Paola,Południowo-wschodni,6 km,blisko,2100 - 3100
-Pembroke,Północny Harbour,4.5 km,nad morzem,3800 - 5800
-Pietà,Północny Harbour,2.5 km,nad morzem,3200 - 4600
-Qormi,Południowo-wschodni,5.5 km,daleko,2200 - 3200
-Qrendi,Południowy,11.5 km,blisko,2100 - 3000
-Rabat,Zachodni,11 km,daleko,2700 - 4000
-Safi,Południowy,10.5 km,daleko,2000 - 2900
-San Ġiljan (St. Julian's),Północny Harbour,2.5 km,nad morzem,4500 - 7500
-San Ġwann,Północny Harbour,3 km,blisko,3200 - 4600
-San Pawl il-Baħar (St. Paul's Bay),Północny,12.5 km,nad morzem,2300 - 3600
-Santa Luċija,Południowo-wschodni,8 km,daleko,2100 - 3000
-Santa Venera,Centralny / Harbour,4 km,daleko,2400 - 3400
-Senglea (Isla),Południowo-wschodni (Trzy Miasta),7.5 km,nad morzem,2900 - 4500
-Siġġiewi,Zachodni,10.5 km,blisko,2400 - 3500
-Sliema,Północny Harbour,1.5 km,nad morzem,4800 - 7000
-Swieqi,Północny Harbour,3.5 km,blisko,3800 - 5800
-Ta' Xbiex,Północny Harbour,0.8 km,nad morzem,4000 - 6200
-Tarxien,Południowo-wschodni,7.5 km,daleko,2100 - 3100
-Valletta,Stolica,4.5 km,nad morzem,4000 - 6500
-Xgħajra,Południowo-wschodni,9.5 km,nad morzem,2300 - 3300
-Żabbar,Południowo-wschodni,8.5 km,blisko,2000 - 3000
-Żebbuġ,Zachodni,9 km,daleko,2300 - 3400
-Żejtun,Południowo-wschodni,9.5 km,blisko,2000 - 3000
-Żurrieq,Południowy,11.5 km,blisko,2200 - 3200
-Bahar Ic-Caghaq,Północny,6 km,blisko,2800 - 4200
+﻿Miejscowość,Region,Odległość do Gżiry,Dystans do morza,Szacowana stawka €/m2,Szerokość geograficzna,Długość geograficzna
+Attard,Centralny,6 km,daleko,2900 - 4100,35.8897,14.4425
+Balzan,Centralny,5 km,daleko,3000 - 4200,35.8986,14.4531
+Birgu (Vittoriosa),Południowo-wschodni (Trzy Miasta),8 km,nad morzem,3200 - 5000,35.8878,14.5228
+Birkirkara,Centralny,4 km,daleko,2500 - 3600,35.8972,14.4611
+Birżebbuġa,Południowy,12 km,nad morzem,2000 - 3000,35.8258,14.5269
+Bormla (Cospicua),Południowo-wschodni (Trzy Miasta),7.5 km,nad morzem,2700 - 4200,35.8817,14.5217
+Dingli,Zachodni,14 km,blisko,2400 - 3500,35.8614,14.3822
+Fgura,Południowo-wschodni,7 km,blisko,2100 - 3100,35.8719,14.5236
+Floriana,Południowo-wschodni (Sąsiedztwo Valletty),4 km,nad morzem,3400 - 5200,35.8953,14.5083
+Gudja,Południowy,8.5 km,daleko,2100 - 3100,35.8492,14.5028
+Gżira,Północny Harbour,0 km,nad morzem,3600 - 5200,35.9058,14.4953
+Għaxaq,Południowy,9 km,daleko,2000 - 2900,35.8481,14.5167
+Ħamrun,Południowo-wschodni,4 km,blisko,2200 - 3200,35.8847,14.4883
+Iklin,Centralny,5 km,daleko,2800 - 3900,35.9083,14.4564
+Kalkara,Południowo-wschodni,8 km,nad morzem,2800 - 4300,35.8892,14.5297
+Kirkop,Południowy,9.5 km,daleko,2000 - 2900,35.8422,14.4853
+Lija,Centralny,5 km,daleko,3100 - 4400,35.9006,14.4464
+Luqa,Południowy,7.5 km,daleko,2100 - 3100,35.8589,14.4889
+Marsa,Południowo-wschodni,5 km,nad morzem,1900 - 2800,35.8792,14.4953
+Marsaskala,Południowo-wschodni,11.5 km,nad morzem,2300 - 3400,35.8625,14.5672
+Marsaxlokk,Południowo-wschodni,12 km,nad morzem,2600 - 3800,35.8419,14.5431
+Mdina,Zachodni,10.5 km,daleko,4500 - 7500,35.8869,14.4025
+Mellieħa,Północny,18.5 km,nad morzem,2800 - 4500,35.9564,14.3639
+Mġarr,Północny,14.5 km,blisko,2500 - 3600,35.9206,14.3664
+Mosta,Północny,7 km,daleko,2700 - 3800,35.9092,14.4256
+Mqabba,Południowy,10 km,daleko,2000 - 2900,35.8469,14.4678
+Msida,Północny Harbour,1.2 km,blisko,3100 - 4400,35.8978,14.4894
+Mtarfa,Zachodni,11.5 km,daleko,2300 - 3200,35.8919,14.3986
+Naxxar,Północny,6 km,blisko,2800 - 4200,35.9136,14.4436
+Paola,Południowo-wschodni,6 km,blisko,2100 - 3100,35.8733,14.5083
+Pembroke,Północny Harbour,4.5 km,nad morzem,3800 - 5800,35.9306,14.4789
+Pietà,Północny Harbour,2.5 km,nad morzem,3200 - 4600,35.8947,14.4950
+Qormi,Południowo-wschodni,5.5 km,daleko,2200 - 3200,35.8778,14.4719
+Qrendi,Południowy,11.5 km,blisko,2100 - 3000,35.8347,14.4583
+Rabat,Zachodni,11 km,daleko,2700 - 4000,35.8814,14.3989
+Safi,Południowy,10.5 km,daleko,2000 - 2900,35.8336,14.4847
+San Ġiljan (St. Julian's),Północny Harbour,2.5 km,nad morzem,4500 - 7500,35.9186,14.4900
+San Ġwann,Północny Harbour,3 km,blisko,3200 - 4600,35.9083,14.4764
+San Pawl il-Baħar (St. Paul's Bay),Północny,12.5 km,nad morzem,2300 - 3600,35.9506,14.4156
+Santa Luċija,Południowo-wschodni,8 km,daleko,2100 - 3000,35.8617,14.5061
+Santa Venera,Centralny / Harbour,4 km,daleko,2400 - 3400,35.8911,14.4781
+Senglea (Isla),Południowo-wschodni (Trzy Miasta),7.5 km,nad morzem,2900 - 4500,35.8886,14.5169
+Siġġiewi,Zachodni,10.5 km,blisko,2400 - 3500,35.8558,14.4381
+Sliema,Północny Harbour,1.5 km,nad morzem,4800 - 7000,35.9122,14.5042
+Swieqi,Północny Harbour,3.5 km,blisko,3800 - 5800,35.9208,14.4800
+Ta' Xbiex,Północny Harbour,0.8 km,nad morzem,4000 - 6200,35.8994,14.4989
+Tarxien,Południowo-wschodni,7.5 km,daleko,2100 - 3100,35.8658,14.5122
+Valletta,Stolica,4.5 km,nad morzem,4000 - 6500,35.8997,14.5147
+Xgħajra,Południowo-wschodni,9.5 km,nad morzem,2300 - 3300,35.8858,14.5478
+Żabbar,Południowo-wschodni,8.5 km,blisko,2000 - 3000,35.8761,14.5350
+Żebbuġ,Zachodni,9 km,daleko,2300 - 3400,35.8719,14.4411
+Żejtun,Południowo-wschodni,9.5 km,blisko,2000 - 3000,35.8558,14.5331
+Żurrieq,Południowy,11.5 km,blisko,2200 - 3200,35.8311,14.4742
+Bahar Ic-Caghaq,Północny,6 km,blisko,2800 - 4200,35.9328,14.4536

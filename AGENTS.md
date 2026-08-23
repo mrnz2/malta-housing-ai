@@ -37,7 +37,7 @@ scrapers/*.py  →  data/scraped_listings.json  →  parsing/llm.py
 
 ## Sources (complete list)
 
-`SourceType` = `maltapark` | `ownersbest` | `djar` | `propertymarket` | `yitaku` | `remax` | `simonmamo` | `belair` | `re316` | `franksalt` | `sensar`
+`SourceType` = `maltapark` | `ownersbest` | `djar` | `propertymarket` | `yitaku` | `remax` | `simonmamo` | `belair` | `re316` | `franksalt` | `sensar` | `excelhomes` | `dhalia`
 
 When adding a portal:
 
@@ -62,7 +62,7 @@ Merge is **by URL** (newer wins). Never overwrite staging with a single-portal d
 
 ## SQLite schema
 
-* `listings` — property fields + `distance_to_gzira_km`, `sea_proximity`, denormalized `ai_score`, `ai_summary`, `ai_evaluated_at`
+* `listings` — property fields + `area_sqm`, `distance_to_gzira_km`, `sea_proximity`, denormalized `ai_score`, `ai_summary`, `ai_evaluated_at`
 * `price_history` — price change log
 * `evaluations` — full AI result per URL (`pros`, `cons`, `evaluation_json`)
 
@@ -117,6 +117,8 @@ Use project venv: `venv\Scripts\python.exe` (Windows).
 * SiteGround `HTTP 202` + `sg-captcha` is auto-solved (SHA1 PoW → `_I_` cookie) inside `HttpClient`.
 * Property Market: listing URLs need trailing `/`; pagination needs full query + `pp=N` (not bare `?pp=N`).
 * Sensar (`sensaramalta.com`): Archivio AJAX is Cloudflare-blocked for `curl_cffi`; listing URLs are collected via Playwright (Chrome/Edge/Chromium), detail pages still use `HttpClient`. Requires `playwright` + `python -m playwright install chromium`.
+* Excel Homes (`excel.com.mt`): listing cards are JS-rendered; scrape `https://api.estateagencyplatform.com/excel/api/v1/properties/search` then detail `/api/v1/properties/{ref}`. Use `not-by-group=1`; regions `1-3-4-5` exclude Gozo.
+* Dhalia (`dhalia.com`): Next.js SPA; scrape `POST https://www.dhalia.com/api/remindAPI.svc/rest/propertySearchREST` with query params (`localities`, `propertyType`, `listingType=For Sale`, `priceMax`, `pageIndex`, `pagesize=15`). Listing URL: `https://www.dhalia.com/buy/{locality}/{type}/{Ref}` (slug = lower-case, spaces → hyphens).
 
 ## Conventions for agents
 
