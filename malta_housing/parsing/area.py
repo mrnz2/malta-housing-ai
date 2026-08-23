@@ -17,6 +17,12 @@ _INTERNAL_AREA_PATTERNS = (
     ),
     re.compile(rf"TotalIntArea[:\s\"]*{_AREA_NUM}", re.I),
 )
+_FLOOR_AREA_PATTERNS = (
+    re.compile(
+        rf"floor\s+area[:\s]*{_AREA_NUM}(?:\s*{_AREA_UNIT})?",
+        re.I,
+    ),
+)
 _EXTERNAL_AREA_PATTERNS = (
     re.compile(
         rf"external\s+area(?:\s*m\s*[2²])?[:\s]*{_AREA_NUM}(?:\s*{_AREA_UNIT})?",
@@ -77,6 +83,9 @@ def _first_area(
 
 def extract_areas_from_text(text: str) -> dict[str, int | None]:
     internal = _first_area(_INTERNAL_AREA_PATTERNS, text)
+    floor = _first_area(_FLOOR_AREA_PATTERNS, text)
+    if internal is None and floor is not None:
+        internal = floor
     external = _first_area(_EXTERNAL_AREA_PATTERNS, text, minimum=1)
     total = _first_area(_TOTAL_AREA_PATTERNS, text)
     if internal is None and total is None:

@@ -8,7 +8,8 @@ import re
 import time
 from typing import Any
 
-from malta_housing.common import HttpClient, load_hidden_urls, merge_staging
+from malta_housing.common import HttpClient, load_hidden_urls, merge_staging, load_json_list, save_json_list
+from malta_housing.paths import STAGING_PATH
 from malta_housing.geo import is_gozo_listing
 from malta_housing.models import ScrapedListing, utc_now_iso
 
@@ -271,12 +272,15 @@ def _raw_text_for(item: dict[str, Any], url: str) -> str:
     for label, key in (
         ("Internal area m2", "IArea"),
         ("External area m2", "EArea"),
-        ("Floor area m2", "FArea"),
         ("Plot area m2", "PArea"),
     ):
         area = _fmt_area(item.get(key))
         if area:
             lines.append(f"{label}: {area}")
+    floor_area = _fmt_area(item.get("FArea"))
+    if floor_area:
+        lines.append(f"Floor Area: {floor_area} sqm")
+        lines.append(f"Area m2: {floor_area}")
     garage = _clean_text(item.get("Garage"))
     if garage:
         lines.append(f"Garage: {garage}")
@@ -360,6 +364,8 @@ def run_dhalia_scraper(max_pages: int = 3) -> list[dict]:
     skipped_hidden = 0
     hidden_urls = load_hidden_urls()
     seen_refs: set[str] = set()
+    api_cache: dict[str, dict[str, Any]] = {}
+    pending: list[tuple[str, str]] = []  # (ref, url)
 
     total = fetch_total_count(client)
     if total is not None:
@@ -391,16 +397,27 @@ def run_dhalia_scraper(max_pages: int = 3) -> list[dict]:
                 skipped_gozo += 1
                 print(f"   └─ Pominięto Gozo: {title}")
                 continue
-            scraped = item_to_scraped(item)
-            if scraped is None:
-                continue
-            scraped_data.append(scraped)
+            pending.append((ref, url))
 
         if len(items) < PAGE_SIZE:
             print("   └─ Ostatnia strona — koniec.")
             break
         if page < max_pages:
             time.sleep(random.uniform(0.5, 1.2))
+
+    print(f"\n📊 Łącznie zebrano {len(pending)} unikalnych ofert z Dhalia.\n")
+
+    for i, (ref, url) in enumerate(pending, 1):
+        print(f"[{i}/{len(pending)}] Pobieranie szczegółów: {url}")
+        detail = fetch_property_by_ref(client, ref, cache=api_cache)
+        if not detail:
+            continue
+        scraped = item_to_scraped(detail)
+        if scraped is None:
+            continue
+        scraped_data.append(scraped)
+        if i < len(pending):
+            time.sleep(random.uniform(0.35, 0.9))
 
     merged = merge_staging(scraped_data)
     print(
@@ -410,6 +427,49 @@ def run_dhalia_scraper(max_pages: int = 3) -> list[dict]:
     )
     print("👉 Możesz teraz uruchomić: python -m malta_housing parse")
     return [item.model_dump() for item in scraped_data]
+
+
+def refresh_dhalia_staging_areas(*, dry_run: bool = False) -> dict[str, int]:
+    """Re-fetch Dhalia detail API and patch Floor Area into staging raw_text."""
+    staging = load_json_list(STAGING_PATH)
+    if not staging:
+        return {"total": 0, "updated": 0, "api_failed": 0, "skipped": 0}
+
+    client = HttpClient(headers=API_HEADERS, timeout=30.0)
+    api_cache: dict[str, dict[str, Any]] = {}
+    stats = {"total": 0, "updated": 0, "api_failed": 0, "skipped": 0}
+    dhalia_items = [
+        item
+        for item in staging
+        if isinstance(item, dict)
+        and (item.get("source") == SOURCE or "dhalia.com" in str(item.get("url", "")).lower())
+    ]
+    stats["total"] = len(dhalia_items)
+
+    for index, item in enumerate(dhalia_items, 1):
+        ref = extract_ref(str(item.get("url") or ""))
+        if not ref:
+            stats["skipped"] += 1
+            continue
+        detail = fetch_property_by_ref(client, ref, cache=api_cache)
+        if not detail:
+            stats["api_failed"] += 1
+            print(f"[{index}/{len(dhalia_items)}] API brak danych: {ref}")
+            continue
+        url = str(item.get("url") or listing_url(detail))
+        new_raw = _raw_text_for(detail, url)
+        if item.get("raw_text") == new_raw:
+            continue
+        print(f"[{index}/{len(dhalia_items)}] Aktualizuję metraż: {ref}")
+        if not dry_run:
+            item["raw_text"] = new_raw
+        stats["updated"] += 1
+        if index < len(dhalia_items):
+            time.sleep(random.uniform(0.35, 0.9))
+
+    if not dry_run and stats["updated"]:
+        save_json_list(STAGING_PATH, staging)
+    return stats
 
 
 if __name__ == "__main__":

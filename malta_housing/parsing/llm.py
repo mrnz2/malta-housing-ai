@@ -80,7 +80,7 @@ def parse_with_llm(raw_listing: dict) -> MaltaPropertySchema:
         "locality": "string lub null",
         "property_type": "apartment",
         "bedrooms": 2,
-        "area_sqm": 95,
+        "area_sqm": null,
         "seller_type": "OWNER/AGENT/SENSAR/UNKNOWN",
         "is_freehold": false,
         "has_airspace": false,
@@ -114,10 +114,8 @@ def parse_with_llm(raw_listing: dict) -> MaltaPropertySchema:
 
 
 def _merge_area_sqm(result_dict: dict[str, Any], raw_text: str | None) -> dict[str, Any]:
-    """Prefer regex area from listing text over LLM guesses."""
-    regex_area = area_sqm_from_text(raw_text)
-    if regex_area is not None:
-        result_dict["area_sqm"] = regex_area
+    """Prefer regex area from listing text; never keep LLM guesses when text has no area."""
+    result_dict["area_sqm"] = area_sqm_from_text(raw_text)
     return result_dict
 
 

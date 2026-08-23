@@ -7,6 +7,7 @@ import sys
 
 from malta_housing.common import configure_stdio, ensure_source
 from malta_housing.db.dhalia_urls import backfill_dhalia_urls
+from malta_housing.scrapers.dhalia import refresh_dhalia_staging_areas
 from malta_housing.db.store import (
     backfill_area_sqm,
     clear_evaluations,
@@ -53,7 +54,13 @@ def cmd_backfill_dhalia_urls(args: argparse.Namespace) -> None:
     print(f"   json: staging={stats['json_staging']} parsed={stats['json_parsed']}")
 
 
-def cmd_backfill_area(_args: argparse.Namespace) -> None:
+def cmd_backfill_area(args: argparse.Namespace) -> None:
+    if getattr(args, "refresh_dhalia", False):
+        stats = refresh_dhalia_staging_areas()
+        print(
+            f"📐 Dhalia staging refresh: total={stats['total']} "
+            f"updated={stats['updated']} api_failed={stats['api_failed']}"
+        )
     stats = backfill_area_sqm(db_name=DB_PATH)
     print(
         f"📐 Backfill area_sqm: updated={stats['updated']} "
@@ -209,6 +216,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_backfill_area = sub.add_parser(
         "backfill-area",
         help="Fill listings.area_sqm from scraped listing text (scraped_listings.json)",
+    )
+    p_backfill_area.add_argument(
+        "--refresh-dhalia",
+        action="store_true",
+        help="Re-fetch Dhalia detail API into staging before backfilling area_sqm",
     )
     p_backfill_area.set_defaults(func=cmd_backfill_area)
 
