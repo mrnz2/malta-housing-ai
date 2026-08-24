@@ -80,6 +80,7 @@ python -m malta_housing rank --top 10 --max-price 300000  # AI investment rankin
 python -m malta_housing serve          # http://127.0.0.1:8765
 python -m malta_housing translate    # EN→PL via Bielik (no re-scrape)
 python -m malta_housing normalize-titles  # title casing backfill (no LLM)
+python -m malta_housing normalize-localities  # locality spelling backfill (no LLM)
 python -m malta_housing purge-gozo
 python -m malta_housing purge-budget
 ```

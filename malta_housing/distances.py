@@ -40,8 +40,8 @@ class LocalityCoords(TypedDict):
 
 # Common scraper/LLM locality spellings → CSV town keys (normalized).
 _ALIASES: dict[str, str] = {
-    "birzebbugia": "birzebbuga",
-    "birzebbuga": "birzebbuga",
+    "birzebbugia": "birzebbugia",
+    "birzebbuga": "birzebbugia",
     "marsascala": "marsaskala",
     "marsaskala": "marsaskala",
     "st pauls bay": "san pawl il bahar",
@@ -75,7 +75,7 @@ _ALIASES: dict[str, str] = {
     "gillieru": "san pawl il bahar",
     "manikata": "mellieha",
     "swatar": "birkirkara",
-    "qajjenza": "birzebbuga",
+    "qajjenza": "birzebbugia",
     "zebbiegh": "mgarr",
     "ta xbiex": "ta xbiex",
     "santa lucia": "santa lucija",

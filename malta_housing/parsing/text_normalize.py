@@ -23,6 +23,11 @@ _EXTRA_PROPER_NAMES: dict[str, str] = {
     "re max": "ReMax",
 }
 
+# Spelling variants only — not geographic sub-localities (see distances._ALIASES).
+_LOCALITY_SPELLING_ALIASES: dict[str, str] = {
+    "birzebbuga": "birzebbugia",
+}
+
 
 def _display_forms_for_locality(cell: str) -> list[str]:
     raw = cell.strip()
@@ -167,6 +172,24 @@ def normalize_display_text(text: str) -> str:
     return "".join(out)
 
 
+def _display_for_key(
+    key: str,
+    single_map: dict[str, str],
+    phrase_map: dict[str, str],
+) -> str | None:
+    if key in phrase_map:
+        return phrase_map[key]
+    if key in single_map:
+        return single_map[key]
+    alias = _LOCALITY_SPELLING_ALIASES.get(key)
+    if alias:
+        if alias in phrase_map:
+            return phrase_map[alias]
+        if alias in single_map:
+            return single_map[alias]
+    return None
+
+
 def normalize_locality_text(locality: str) -> str:
     """Normalize casing and map to a known Malta locality display form when possible."""
     text = locality.strip()
@@ -179,12 +202,14 @@ def normalize_locality_text(locality: str) -> str:
     if words:
         for size in range(min(len(words), max_phrase_words), 0, -1):
             for key in _phrase_keys(words[:size]):
-                if key in phrase_map:
-                    return phrase_map[key]
+                display = _display_for_key(key, single_map, phrase_map)
+                if display:
+                    return display
         if len(words) == 1:
             key = _normalize(words[0])
-            if key in single_map:
-                return single_map[key]
+            display = _display_for_key(key, single_map, phrase_map)
+            if display:
+                return display
 
     return normalize_display_text(text)
 
@@ -294,6 +319,75 @@ def run_normalize_titles(db_name: str | Path = DB_PATH) -> dict[str, int]:
         f"✅ Title normalization done: {db_updated} updated in DB, "
         f"{parsed_updated} updated in {PARSED_PATH.name}, "
         f"{len(rows)} visible listing(s) scanned."
+    )
+    return {
+        "db_updated": db_updated,
+        "parsed_updated": parsed_updated,
+        "scanned": len(rows),
+    }
+
+
+def run_normalize_localities(db_name: str | Path = DB_PATH) -> dict[str, int]:
+    """Normalize locality spellings in SQLite and parsed_listings.json."""
+    from malta_housing.common import PARSED_PATH, load_json_list, save_json_list
+    from malta_housing.db.store import _connect, init_db
+    from malta_housing.distances import distance_to_gzira_km, sea_proximity_for
+
+    db_path = Path(db_name)
+    init_db(db_path)
+
+    conn = _connect(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, locality FROM listings
+        WHERE locality IS NOT NULL AND TRIM(locality) != ''
+        """
+    )
+    rows = [dict(row) for row in cur.fetchall()]
+
+    db_updated = 0
+    for row in rows:
+        current = (row.get("locality") or "").strip()
+        new_loc = normalize_locality_text(current)
+        if not new_loc or new_loc == current:
+            continue
+        km = distance_to_gzira_km(new_loc)
+        sea = sea_proximity_for(new_loc)
+        cur.execute(
+            """
+            UPDATE listings
+            SET locality = ?,
+                distance_to_gzira_km = COALESCE(?, distance_to_gzira_km),
+                sea_proximity = COALESCE(?, sea_proximity)
+            WHERE id = ?
+            """,
+            (new_loc, km, sea, row["id"]),
+        )
+        db_updated += 1
+
+    conn.commit()
+    conn.close()
+
+    parsed_updated = 0
+    parsed_items = load_json_list(PARSED_PATH)
+    if parsed_items:
+        for item in parsed_items:
+            current = (item.get("locality") or "").strip()
+            if not current:
+                continue
+            new_loc = normalize_locality_text(current)
+            if new_loc and new_loc != current:
+                item["locality"] = new_loc
+                parsed_updated += 1
+
+        if parsed_updated:
+            save_json_list(PARSED_PATH, parsed_items)
+
+    print(
+        f"✅ Locality normalization done: {db_updated} updated in DB, "
+        f"{parsed_updated} updated in {PARSED_PATH.name}, "
+        f"{len(rows)} listing(s) scanned."
     )
     return {
         "db_updated": db_updated,
