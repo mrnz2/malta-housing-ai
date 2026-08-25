@@ -35,6 +35,7 @@ $sources = @(
     "sensar"
     "excelhomes"
     "dhalia"
+    "alliance"
 )
 
 Write-Host "Malta Housing AI - full pipeline (all scrapers -> parse -> db -> rank)" -ForegroundColor Cyan

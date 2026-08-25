@@ -31,6 +31,8 @@ _MESSAGES: dict[str, dict[str, dict[str, str]]] = {
         "franksalt": {"en": "Frank Salt", "pl": "Frank Salt"},
         "sensar": {"en": "Sensara Malta", "pl": "Sensara Malta"},
         "excelhomes": {"en": "Excel Homes", "pl": "Excel Homes"},
+        "dhalia": {"en": "Dhalia", "pl": "Dhalia"},
+        "alliance": {"en": "Alliance", "pl": "Alliance"},
     },
     "bank_risk": {
         "low": {"en": "Low", "pl": "Niskie"},

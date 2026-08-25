@@ -26,6 +26,7 @@ SourceType = Literal[
     "sensar",
     "excelhomes",
     "dhalia",
+    "alliance",
 ]
 
 

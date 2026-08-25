@@ -18,6 +18,7 @@ from malta_housing.db.store import (
 )
 from malta_housing.parsing.llm import run_parser
 from malta_housing.paths import DB_PATH
+from malta_housing.scrapers.alliance import run_alliance_scraper
 from malta_housing.scrapers.belair import run_belair_scraper
 from malta_housing.scrapers.dhalia import run_dhalia_scraper
 from malta_housing.scrapers.djar import run_djar_scraper
@@ -96,6 +97,8 @@ def cmd_scrape(args: argparse.Namespace) -> None:
         run_excelhomes_scraper(max_pages=args.pages)
     elif source == "dhalia":
         run_dhalia_scraper(max_pages=args.pages)
+    elif source == "alliance":
+        run_alliance_scraper(max_pages=args.pages)
     else:
         run_djar_scraper(max_pages=args.pages)
 
@@ -257,6 +260,7 @@ def build_parser() -> argparse.ArgumentParser:
             "sensar",
             "excelhomes",
             "dhalia",
+            "alliance",
         ],
         help="Portal to scrape",
     )
@@ -292,6 +296,7 @@ def build_parser() -> argparse.ArgumentParser:
             "sensar",
             "excelhomes",
             "dhalia",
+            "alliance",
         ],
         help="Portal to scrape",
     )
@@ -384,6 +389,7 @@ def build_parser() -> argparse.ArgumentParser:
             "sensar",
             "excelhomes",
             "dhalia",
+            "alliance",
         ],
         help="Only evaluate listings from this portal (default: all sources)",
     )

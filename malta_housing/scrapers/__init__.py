@@ -1,5 +1,6 @@
 """Portal scrapers."""
 
+from malta_housing.scrapers.alliance import run_alliance_scraper
 from malta_housing.scrapers.belair import run_belair_scraper
 from malta_housing.scrapers.dhalia import run_dhalia_scraper
 from malta_housing.scrapers.djar import run_djar_scraper
@@ -15,6 +16,7 @@ from malta_housing.scrapers.simonmamo import run_simonmamo_scraper
 from malta_housing.scrapers.yitaku import run_yitaku_scraper
 
 __all__ = [
+    "run_alliance_scraper",
     "run_belair_scraper",
     "run_scraper",
     "run_ownersbest_scraper",
